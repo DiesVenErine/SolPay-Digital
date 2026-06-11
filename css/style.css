@@ -341,24 +341,20 @@ body {
     transform: scale(0.98);
     background: rgba(239, 68, 68, 0.2) !important;
 }
-/* Sembunyikan persenan pembawa emosi tanpa merusak icon */
-#badge-growth, .card-meta {
-    display: none !important;
-}
-/* Trik biar persenan ilang DAN ruangnya ikut ilang */
-.card-meta {
+
+/* Pastikan ini ada di baris paling bawah */
+.card-meta, #badge-growth {
     display: none !important;
 }
 
-/* Biar card utama nggak nabrak card bawahnya */
+/* Pastikan kartu tidak bertumpuk */
 .main-balance-card {
-    height: auto !important; /* Biarkan tinggi menyesuaikan konten */
-    padding-bottom: 15px !important; /* Kasih jarak napas */
+    height: auto !important; 
+    padding-bottom: 20px !important;
+    position: relative;
+    z-index: 1;
 }
 
-/* Memastikan ikon Lucide di bawahnya nggak kegeser */
-.card-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.dashboard-container {
+    overflow: hidden !important;
 }
