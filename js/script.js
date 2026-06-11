@@ -709,3 +709,10 @@ function renderCharts() {
 function formatIDR(amount) {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
 }
+
+// Tambahkan ini di baris paling bawah file JS lu
+document.addEventListener('DOMContentLoaded', () => {
+    renderAll(); 
+    if (window.lucide) lucide.createIcons();
+});
+
