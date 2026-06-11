@@ -345,3 +345,20 @@ body {
 #badge-growth, .card-meta {
     display: none !important;
 }
+/* Trik biar persenan ilang DAN ruangnya ikut ilang */
+.card-meta {
+    display: none !important;
+}
+
+/* Biar card utama nggak nabrak card bawahnya */
+.main-balance-card {
+    height: auto !important; /* Biarkan tinggi menyesuaikan konten */
+    padding-bottom: 15px !important; /* Kasih jarak napas */
+}
+
+/* Memastikan ikon Lucide di bawahnya nggak kegeser */
+.card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
