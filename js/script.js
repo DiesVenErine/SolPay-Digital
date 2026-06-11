@@ -2,10 +2,10 @@
 const DEFAULT_STATE = {
     balances: {
         main: 136000,
-        main_baseline: 136000,
-        modal_jualan: 36000,
-        cash: 75000,
-        ewallet: 25000,
+        main_baseline: 136000, 
+        modal_jualan: 36000,   
+        cash: 75000,           
+        ewallet: 25000,         
         profit: 0,
         piutang: 125000,
         fashion: 0,
@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initLiveCalc();
     initCustomSelects();
     initQuickRecapActions();
-    initConfirmationEvents();
+    initConfirmationEvents(); 
     renderAll();
     if (window.lucide) lucide.createIcons();
 });
@@ -46,24 +46,24 @@ function initCustomSelects() {
     groups.forEach(groupId => {
         const groupEl = document.getElementById(groupId);
         if (!groupEl) return;
-
+        
         groupEl.addEventListener('click', (e) => {
             const button = e.target.closest('.select-btn');
             if (!button) return;
-
+            
             groupEl.querySelectorAll('.select-btn').forEach(btn => btn.classList.remove('active'));
             button.classList.add('active');
-
+            
             if (groupId === 'track-type-group') {
                 const val = button.getAttribute('data-value');
                 const catGroup = document.getElementById('group-category');
-
+                
                 if (catGroup) {
                     if (val === 'pengeluaran' || val === 'transfer_pos') {
-                        catGroup.style.display = 'flex';
-                    } else {
-                        catGroup.style.display = 'none';
-                    }
+    catGroup.style.display = 'flex';
+} else {
+    catGroup.style.display = 'none';
+}
                 }
             }
         });
@@ -120,21 +120,25 @@ function openManualTracker(type) {
     setCustomSelectValue('track-type-group', type);
     const catGroup = document.getElementById('group-category');
     if (catGroup) {
-        catGroup.style.display = (type === 'pengeluaran' || type === 'transfer_pos') ? 'flex' : 'none';
-    }
+    catGroup.style.display =
+        (type === 'pengeluaran' || type === 'transfer_pos')
+            ? 'flex'
+            : 'none';
+}
     showToast(`✨ Input manual ${type} dibuka`);
 }
 
 function showToast(message, allowUndo = false) {
     const container = document.getElementById('toastContainer');
     if (!container) return;
+    
     const toast = document.createElement('div');
     toast.className = 'toast';
     let undoButtonHtml = allowUndo ? `<button onclick="undoDeleteTransaction()" style="background:none; border:none; color:#14F195; font-weight:700; margin-left:10px; cursor:pointer;">UNDO</button>` : '';
-
+    
     toast.innerHTML = `<span>${message}</span>${undoButtonHtml}`;
     container.appendChild(toast);
-
+    
     setTimeout(() => {
         toast.classList.add('fade-out');
         toast.addEventListener('animationend', () => toast.remove());
@@ -148,7 +152,7 @@ function openActionModal(type) {
     if (form) form.reset();
     if (modalOverlay) modalOverlay.classList.add('open');
     document.getElementById('biz-type').value = type;
-
+    
     const titleEl = document.getElementById('modal-title');
     if (titleEl) {
         if (type === 'kuota') titleEl.innerText = '⚡ Transaksi Pulsa / Kuota';
@@ -173,16 +177,16 @@ function initLiveCalc() {
 function updateLiveCalc() {
     const type = document.getElementById('biz-type').value;
     const nominal = parseFloat(document.getElementById('biz-nominal').value) || 0;
-
+    
     let profit = 0;
-    if (type === 'kuota') profit = 3000;
-    else if (type === 'ewallet') profit = 5000;
-    else if (type === 'tarik') profit = nominal < 100000 ? 3000 : 5000;
-
+    if (type === 'kuota') profit = 3000; 
+    else if (type === 'ewallet') profit = 5000; 
+    else if (type === 'tarik') profit = nominal < 100000 ? 3000 : 5000; 
+    
     const baseEl = document.getElementById('calc-base');
-    const profitEl = document.getElementById('calc-base-profit');
+    const profitEl = document.getElementById('calc-base-profit'); 
     const totalEl = document.getElementById('calc-total');
-
+    
     if (baseEl) baseEl.innerText = formatIDR(nominal);
     if (profitEl) profitEl.innerText = `+${formatIDR(profit)}`;
     if (totalEl) totalEl.innerText = formatIDR(nominal + profit);
@@ -213,46 +217,52 @@ function initForms() {
             const status = getCustomSelectValue('biz-status-group') || 'Lunas';
             const receiveTarget = getCustomSelectValue('biz-source-group') || 'cash';
             const notes = document.getElementById('biz-notes').value;
-
+            
             if (isNaN(nominal) || nominal <= 0) {
                 showToast("❌ Nominal tidak valid!");
                 return;
             }
-            let profit = 0;
-            if (type === 'kuota') profit = 3000;
-            else if (type === 'ewallet') profit = 5000;
-            else if (type === 'tarik') profit = nominal < 100000 ? 3000 : 5000;
 
+            let profit = 0;
+            if (type === 'kuota') profit = 3000; 
+            else if (type === 'ewallet') profit = 5000; 
+            else if (type === 'tarik') profit = nominal < 100000 ? 3000 : 5000; 
+            
             const totalPayment = nominal + profit;
+            
             if (state.balances.modal_jualan < nominal) {
                 showToast(`❌ Stok Modal Jualan tidak cukup!`);
                 return;
             }
-
+            
             state.balances.modal_jualan -= nominal;
+            
             if (status === 'Lunas') {
-                state.balances.modal_jualan += nominal;
+                state.balances.modal_jualan += nominal; 
+                
                 if (receiveTarget === 'cash') state.balances.cash += profit;
                 else state.balances.ewallet += profit;
+                
                 state.balances.profit += profit;
                 showToast(`✅ Transaksi Sukses! Modal Pokok kembali dikunci, Profit masuk kas ${receiveTarget.toUpperCase()}`);
             } else {
                 state.balances.piutang += totalPayment;
                 showToast(`⚠ Hutang dicatat atas nama ${customer}`);
             }
-
+            
             state.transactions.unshift({
                 id: 'TX-' + Date.now(),
                 customer: customer,
-                type: type,
+                type: type, 
                 nominal: nominal,
                 profit: profit,
                 totalPayment: totalPayment,
-                status: status,
+                status: status, 
                 source: receiveTarget,
                 notes: notes,
                 date: new Date().toLocaleString('id-ID')
             });
+            
             saveState();
             closeModal();
         });
@@ -267,12 +277,17 @@ function initForms() {
             const category = getCustomSelectValue('track-category-group');
             const source = getCustomSelectValue('track-source-group') || 'cash';
             const notes = document.getElementById('track-notes').value || '';
-
+            
             if (isNaN(nominal) || nominal <= 0) {
                 showToast("❌ Masukkan nominal angka yang valid!");
                 return;
             }
-            if (type === 'transfer' || notes.toLowerCase().includes('pindah') || notes.toLowerCase().includes('transfer')) {
+
+            if (
+    type === 'transfer' ||
+    notes.toLowerCase().includes('pindah') ||
+    notes.toLowerCase().includes('transfer')
+) {
                 if (source === 'cash') {
                     if (state.balances.cash < nominal) { showToast("❌ Saldo Tunai lu gak cukup buat dipindahin!"); return; }
                     state.balances.cash -= nominal;
@@ -284,35 +299,44 @@ function initForms() {
                     state.balances.cash += nominal;
                     showToast(`🔄 Sukses memindahkan ${formatIDR(nominal)} dari E-Wallet ke Tunai!`);
                 }
-            }
+            } 
             else if (type === 'transfer_pos') {
-                const fromCategory = category;
-                const toCategory = category === 'fashion' ? 'skincare' : 'fashion';
+    const fromCategory = category;
+    const toCategory =
+        category === 'fashion'
+            ? 'skincare'
+            : 'fashion';
 
-                if (state.balances[fromCategory] < nominal) {
-                    showToast(`❌ Saldo ${fromCategory} tidak cukup!`);
-                    return;
-                }
-                state.balances[fromCategory] -= nominal;
-                state.balances[toCategory] += nominal;
+    if (state.balances[fromCategory] < nominal) {
+        showToast(`❌ Saldo ${fromCategory} tidak cukup!`);
+        return;
+    }
 
-                showToast(`🔄 Transfer ${formatIDR(nominal)} dari ${fromCategory.toUpperCase()} ke ${toCategory.toUpperCase()} berhasil!`);
-            }
+    state.balances[fromCategory] -= nominal;
+    state.balances[toCategory] += nominal;
+
+    showToast(
+        `🔄 Transfer ${formatIDR(nominal)} dari ${fromCategory.toUpperCase()} ke ${toCategory.toUpperCase()} berhasil!`
+    );
+}
+
+            
             else if (type === 'isi_modal') {
                 if (source === 'cash' && state.balances.cash < nominal) { showToast(`❌ Saldo Cash tidak cukup!`); return; }
                 if (source === 'ewallet' && state.balances.ewallet < nominal) { showToast(`❌ Saldo E-Wallet tidak cukup!`); return; }
+                
                 if (source === 'cash') state.balances.cash -= nominal;
                 else state.balances.ewallet -= nominal;
-
+                
                 state.balances.modal_jualan += nominal;
                 showToast(`⚡ Sukses isi ulang Modal Dagang +${formatIDR(nominal)}`);
-            }
+            } 
             else if (type === 'pemasukan') {
                 if (source === 'cash') state.balances.cash += nominal;
                 else state.balances.ewallet += nominal;
                 showToast(`💸 Pemasukan kas berhasil disimpan.`);
-            }
-            else {
+            } 
+            else { 
                 if (category === 'skincare' || category === 'fashion') {
                     handleCategorySpending(category, nominal);
                 } else {
@@ -326,10 +350,11 @@ function initForms() {
                 }
                 showToast(`🔴 Pengeluaran dicatat.`);
             }
+            
             state.transactions.unshift({
                 id: 'MNT-' + Date.now(),
                 customer: 'Self (Tracker)',
-                type: type === 'isi_modal' ? 'Isi Modal' : type,
+                type: type === 'isi_modal' ? 'Isi Modal' : type, 
                 nominal: nominal,
                 profit: 0,
                 totalPayment: nominal,
@@ -338,7 +363,7 @@ function initForms() {
                 notes: notes || `Kategori: ${category || 'Umum'}`,
                 date: new Date().toLocaleString('id-ID')
             });
-
+            
             formTracker.reset();
             saveState();
         });
@@ -349,13 +374,14 @@ function initForms() {
         btnRecap.addEventListener('click', () => {
             const remainingPersonalCheck = state.balances.cash + state.balances.ewallet;
             const profit = state.balances.profit;
-
+            
             if (remainingPersonalCheck <= 0) {
                 showToast(`⚠ Kas kosong, tidak ada saldo harian berjalan untuk di-recap.`);
                 return;
             }
 
             let totalToSplit = remainingPersonalCheck;
+
             state.balances.cash = 0;
             state.balances.ewallet = 0;
             state.balances.profit = 0;
@@ -371,71 +397,20 @@ function initForms() {
                         state.balances[debt.to] += debt.amount;
                     }
                 });
-                state.categoryDebts = [];
+                state.categoryDebts = []; 
                 showToast("🔄 Utang antar kategori otomatis diselesaikan dari rekap!");
             }
+            
             state.recapHistory.unshift({
                 id: 'RCP-' + Date.now(),
                 date: new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' }),
-                checkMoney: remainingPersonalCheck,
-                profit,
+                checkMoney: remainingPersonalCheck, 
+                profit, 
                 allocatedEach: halfShare
             });
-
-            // ENGINE DYNAMIC RENDERING
-function renderAll() {
-    // 1. Kalkulasi Total Saldo Utama dari seluruh pos kas
-    state.balances.main = state.balances.cash + state.balances.ewallet + state.balances.modal_jualan + state.balances.fashion + state.balances.skincare;
-
-    if(document.getElementById('txt-main-balance')) document.getElementById('txt-main-balance').innerText = formatIDR(state.balances.main);
-    if(document.getElementById('txt-modal-jualan')) document.getElementById('txt-modal-jualan').innerText = formatIDR(state.balances.modal_jualan);
-    if(document.getElementById('txt-cash-balance')) document.getElementById('txt-cash-balance').innerText = formatIDR(state.balances.cash);
-    if(document.getElementById('txt-ewallet-balance')) document.getElementById('txt-ewallet-balance').innerText = formatIDR(state.balances.ewallet);
-    if(document.getElementById('txt-business-profit')) document.getElementById('txt-business-profit').innerText = formatIDR(state.balances.profit);
-
-    const realPiutang = state.transactions.filter(t => t.status === 'Hutang').reduce((acc, c) => acc + c.totalPayment, 0);
-    state.balances.piutang = realPiutang;
-    if(document.getElementById('txt-total-piutang')) document.getElementById('txt-total-piutang').innerText = formatIDR(state.balances.piutang);
-
-    if(document.getElementById('txt-fashion-balance')) document.getElementById('txt-fashion-balance').innerText = formatIDR(state.balances.fashion);
-    if(document.getElementById('txt-skincare-balance')) document.getElementById('txt-skincare-balance').innerText = formatIDR(state.balances.skincare);
-
-    const currentProgressMoney = state.balances.cash + state.balances.ewallet + state.balances.modal_jualan + state.balances.profit;
-    if(document.getElementById('recap-cek-val')) document.getElementById('recap-cek-val').innerText = formatIDR(currentProgressMoney);
-    if(document.getElementById('recap-profit-val')) document.getElementById('recap-profit-val').innerText = formatIDR(state.balances.profit);
-
-    // 🔥 PROGRESS BAR & TARGET TEXT (Aman dengan pengecekan)
-    const targetText = document.getElementById('saving-percent-text');
-    const progressBar = document.getElementById('saving-progress-bar');
-    if (targetText && progressBar && state.weeklyTarget > 0) {
-        const percentage = Math.min(Math.round((currentProgressMoney / state.weeklyTarget) * 100), 100);
-        targetText.innerText = `${percentage}% Tercapai`;
-        progressBar.style.width = `${percentage}%`;
-    }
-
-    // 🔥 STATUS HUTANG KATEGORI INTERN
-    const internalDebtStatus = document.getElementById('internal-debt-status');
-    if (internalDebtStatus) {
-        if (state.categoryDebts && state.categoryDebts.length > 0) {
-            let debtSummary = state.categoryDebts.map(d => `Pos <b>${d.from.toUpperCase()}</b> pinjam ke <b>${d.to.toUpperCase()}</b> sebesar ${formatIDR(d.amount)}`).join('<br>');
-            internalDebtStatus.innerHTML = `<span style="color:#EAB308;">⚠️ ${debtSummary}</span>`;
-        } else {
-            internalDebtStatus.innerHTML = `Sistem seimbang. Tidak ada hutang kategori.`;
-        }
-    }
-
-    // 2. Render komponen list dan grafik pendukung
-    renderDebtList();
-    renderRecapHistoryList();
-    renderGlobalHistoryList();
-    renderCharts();
-
-    // 🔥 FORCE RE-RENDER SEMUA IKON LUCIDE DI SCREENSHOT AGAR MUNCUL KEMBALI
-    if (window.lucide) {
-        lucide.createIcons();
-    }
-}
-
+            
+            state.balances.main_baseline = state.balances.modal_jualan + state.balances.fashion + state.balances.skincare;
+            
             saveState();
             showToast(`✨ Rekap mingguan bersih! Terbagi rata ke Skincare & Fashion.`);
         });
@@ -452,13 +427,8 @@ function renderAll() {
         });
     }
 
-    // 🔥 FIX RESET TOTAL MURNI 0 LANGSUNG VIA ID JANTAN
-    const btnResetSystem = document.getElementById('btn-reset-system');
-    if (btnResetSystem) {
-        btnResetSystem.addEventListener('click', () => {
-            const yakin = confirm("🧼 Peringatan Giga Reset!\nApakah lu yakin mau menghapus seluruh saldo dan riwayat transaksi menjadi NOL MUTLAK?");
-            if (!yakin) return;
-
+    document.body.addEventListener('click', (e) => {
+        if (e.target.innerText?.includes('Giga Reset Total') || e.target.id === 'btn-reset-system') {
             const EMPTY_STATE = {
                 balances: { main: 0, main_baseline: 0, modal_jualan: 0, cash: 0, ewallet: 0, profit: 0, piutang: 0, fashion: 0, skincare: 0 },
                 transactions: [], recapHistory: [], categoryDebts: [], weeklyTarget: 50000
@@ -466,16 +436,15 @@ function renderAll() {
             state = EMPTY_STATE;
             saveState();
             showToast('🧼 GIGA RESET BERHASIL! Seluruh Saldo & History Jadi Nol Mutlak!');
-            setTimeout(() => { window.location.reload(true); }, 500);
-        });
-    }
+        }
+    });
 }
 
 function handleCategorySpending(category, nominal) {
     if (!state.categoryDebts) state.categoryDebts = [];
     const currentPool = state.balances[category];
     const complementaryCategory = category === 'skincare' ? 'fashion' : 'skincare';
-
+    
     if (currentPool >= nominal) {
         state.balances[category] -= nominal;
     } else {
@@ -484,10 +453,10 @@ function handleCategorySpending(category, nominal) {
         state.balances[complementaryCategory] -= structuralDeficit;
         
         state.categoryDebts.push({
-            id: 'CDB-' + Date.now(),
-            from: category,
-            to: complementaryCategory,
-            amount: structuralDeficit,
+            id: 'CDB-' + Date.now(), 
+            from: category, 
+            to: complementaryCategory, 
+            amount: structuralDeficit, 
             date: new Date().toLocaleDateString('id-ID')
         });
         showToast(`⚠ Saldo ${category} kurang! Meminjam ${formatIDR(structuralDeficit)} dari pos ${complementaryCategory}`);
@@ -499,6 +468,7 @@ function deleteTransaction(txId) {
     if (index !== -1) {
         lastDeletedTransaction = { index: index, data: JSON.parse(JSON.stringify(state.transactions[index])) };
         const tx = state.transactions[index];
+        
         if (tx.type === 'kuota' || tx.type === 'ewallet' || tx.type === 'tarik') {
             if (tx.status === 'Lunas') {
                 if (tx.source === 'cash') state.balances.cash -= tx.profit;
@@ -559,14 +529,16 @@ function initConfirmationEvents() {
                 if (index !== -1) {
                     const tx = state.transactions[index];
                     const targetWallet = getCustomSelectValue('confirm-receive-group') || 'cash';
+                    
                     tx.status = 'Lunas';
                     state.balances.modal_jualan += tx.nominal;
-
+                    
                     if (targetWallet === 'cash') state.balances.cash += tx.profit;
                     else state.balances.ewallet += tx.profit;
-
+                    
                     state.balances.profit += tx.profit;
                     tx.source = targetWallet;
+                    
                     document.getElementById('confirmOverlay').classList.remove('open');
                     showToast(`✅ Pembayaran Hutang dari ${tx.customer} Lunas! Modal diamankan, untung masuk ${targetWallet.toUpperCase()}`);
                     saveState();
@@ -576,30 +548,32 @@ function initConfirmationEvents() {
     }
 }
 
-// ENGINE DYNAMIC RENDERING
-// ENGINE DYNAMIC RENDERING
+// ENGINE DYNAMIC RENDERING (🔥 FIXED & REFACTORED)
 function renderAll() {
-    // Kalkulasi Total Saldo Utama dari seluruh pos kas
     state.balances.main = state.balances.cash + state.balances.ewallet + state.balances.modal_jualan + state.balances.fashion + state.balances.skincare;
-
+    
     if(document.getElementById('txt-main-balance')) document.getElementById('txt-main-balance').innerText = formatIDR(state.balances.main);
     if(document.getElementById('txt-modal-jualan')) document.getElementById('txt-modal-jualan').innerText = formatIDR(state.balances.modal_jualan);
     if(document.getElementById('txt-cash-balance')) document.getElementById('txt-cash-balance').innerText = formatIDR(state.balances.cash);
     if(document.getElementById('txt-ewallet-balance')) document.getElementById('txt-ewallet-balance').innerText = formatIDR(state.balances.ewallet);
     if(document.getElementById('txt-business-profit')) document.getElementById('txt-business-profit').innerText = formatIDR(state.balances.profit);
-
+    
     const realPiutang = state.transactions.filter(t => t.status === 'Hutang').reduce((acc, c) => acc + c.totalPayment, 0);
     state.balances.piutang = realPiutang;
     if(document.getElementById('txt-total-piutang')) document.getElementById('txt-total-piutang').innerText = formatIDR(state.balances.piutang);
-
+    
     if(document.getElementById('txt-fashion-balance')) document.getElementById('txt-fashion-balance').innerText = formatIDR(state.balances.fashion);
     if(document.getElementById('txt-skincare-balance')) document.getElementById('txt-skincare-balance').innerText = formatIDR(state.balances.skincare);
-
-    const currentProgressMoney = state.balances.cash + state.balances.ewallet + state.balances.modal_jualan + state.balances.profit;
+    
+    const currentProgressMoney =
+    state.balances.cash +
+    state.balances.ewallet +
+    state.balances.modal_jualan +
+    state.balances.profit;
     if(document.getElementById('recap-cek-val')) document.getElementById('recap-cek-val').innerText = formatIDR(currentProgressMoney);
     if(document.getElementById('recap-profit-val')) document.getElementById('recap-profit-val').innerText = formatIDR(state.balances.profit);
-
-    // 🔥 PROGRESS BAR & TARGET TEXT
+    
+    // 🔥 1. PROGRESS BAR & TARGET TEXT FIX (Menembak ID yang tepat & Anti Error)
     const targetText = document.getElementById('saving-percent-text');
     const progressBar = document.getElementById('saving-progress-bar');
     if (targetText && progressBar && state.weeklyTarget > 0) {
@@ -608,7 +582,7 @@ function renderAll() {
         progressBar.style.width = `${percentage}%`;
     }
 
-    // 🔥 STATUS HUTANG KATEGORI INTERN
+    // 🔥 2. STATUS HUTANG KATEGORI INTERN FIX
     const internalDebtStatus = document.getElementById('internal-debt-status');
     if (internalDebtStatus) {
         if (state.categoryDebts && state.categoryDebts.length > 0) {
@@ -618,81 +592,7 @@ function renderAll() {
             internalDebtStatus.innerHTML = `Sistem seimbang. Tidak ada hutang kategori.`;
         }
     }
-
-    renderDebtList();
-    renderRecapHistoryList();
-    renderGlobalHistoryList();
-    renderCharts();
-}
-
-
-    if(document.getElementById('txt-main-balance')) document.getElementById('txt-main-balance').innerText = formatIDR(state.balances.main);
-    if(document.getElementById('txt-modal-jualan')) document.getElementById('txt-modal-jualan').innerText = formatIDR(state.balances.modal_jualan);
-    if(document.getElementById('txt-cash-balance')) document.getElementById('txt-cash-balance').innerText = formatIDR(state.balances.cash);
-    if(document.getElementById('txt-ewallet-balance')) document.getElementById('txt-ewallet-balance').innerText = formatIDR(state.balances.ewallet);
-    if(document.getElementById('txt-business-profit')) document.getElementById('txt-business-profit').innerText = formatIDR(state.balances.profit);
-
-    const realPiutang = state.transactions.filter(t => t.status === 'Hutang').reduce((acc, c) => acc + c.totalPayment, 0);
-    state.balances.piutang = realPiutang;
-    if(document.getElementById('txt-total-piutang')) document.getElementById('txt-total-piutang').innerText = formatIDR(state.balances.piutang);
-
-    if(document.getElementById('txt-fashion-balance')) document.getElementById('txt-fashion-balance').innerText = formatIDR(state.balances.fashion);
-    if(document.getElementById('txt-skincare-balance')) document.getElementById('txt-skincare-balance').innerText = formatIDR(state.balances.skincare);
-
-    const currentProgressMoney = state.balances.cash + state.balances.ewallet + state.balances.modal_jualan + state.balances.profit;
-    if(document.getElementById('recap-cek-val')) document.getElementById('recap-cek-val').innerText = formatIDR(currentProgressMoney);
-    if(document.getElementById('recap-profit-val')) document.getElementById('recap-profit-val').innerText = formatIDR(state.balances.profit);
-
-    // 🔥 FIX 1. PROGRESS BAR & TARGET TEXT (Menembak ID yang tepat & Anti Error)
-    const targetText = document.getElementById('saving-percent-text');
-    const progressBar = document.getElementById('saving-progress-bar');
-    if (targetText && progressBar && state.weeklyTarget > 0) {
-        const percentage = Math.min(Math.round((currentProgressMoney / state.weeklyTarget) * 100), 100);
-        targetText.innerText = `${percentage}% Tercapai`;
-        progressBar.style.width = `${percentage}%`;
-    }
-
-    // 🔥 FIX AUTOMATIC REAL-TIME PERCENTAGE BADGE (Di bawah saldo utama)
-    const badgeGrowth = document.getElementById('badge-growth');
-    if (badgeGrowth) {
-        const currentBalance = state.balances.main || 0;
-        const baselineBalance = state.balances.main_baseline || 0;
-        let percentChange = 0;
-        
-        if (baselineBalance > 0) {
-            percentChange = ((currentBalance - baselineBalance) / baselineBalance) * 100;
-        } else if (baselineBalance === 0 && currentBalance > 0) {
-            percentChange = 100; // Kondisi pas baru mulai/reset trus diisi saldo pertama kali
-        }
-
-        const formattedPercent = percentChange.toFixed(1);
-        badgeGrowth.className = 'badge'; // Reset class agar warna gak bentrok
-
-        if (percentChange > 0) {
-            badgeGrowth.classList.add('success-badge');
-            badgeGrowth.innerHTML = `<i data-lucide="trending-up"></i><span id="txt-growth">+${formattedPercent}% mggu ini</span>`;
-        } else if (percentChange < 0) {
-            badgeGrowth.classList.add('danger-badge');
-            badgeGrowth.innerHTML = `<i data-lucide="trending-down"></i><span id="txt-growth">${formattedPercent}% mggu ini</span>`;
-        } else {
-            badgeGrowth.classList.add('success-badge');
-            badgeGrowth.innerHTML = `<i data-lucide="trending-up"></i><span id="txt-growth">+0.0% mggu ini</span>`;
-        }
-        
-        if (window.lucide) lucide.createIcons();
-    }
-
-    // 🔥 FIX 2. STATUS HUTANG KATEGORI INTERN
-    const internalDebtStatus = document.getElementById('internal-debt-status');
-    if (internalDebtStatus) {
-        if (state.categoryDebts && state.categoryDebts.length > 0) {
-            let debtSummary = state.categoryDebts.map(d => `Pos <b>${d.from.toUpperCase()}</b> pinjam ke <b>${d.to.toUpperCase()}</b> sebesar ${formatIDR(d.amount)}`).join('<br>');
-            internalDebtStatus.innerHTML = `<span style="color:#EAB308;">⚠️ ${debtSummary}</span>`;
-        } else {
-            internalDebtStatus.innerHTML = `Sistem seimbang. Tidak ada hutang kategori.`;
-        }
-    }
-
+    
     renderDebtList();
     renderRecapHistoryList();
     renderGlobalHistoryList();
@@ -703,7 +603,7 @@ function renderDebtList() {
     const list = document.getElementById('piutang-list');
     if (!list) return;
     list.innerHTML = "";
-
+    
     const activeDebts = state.transactions.filter(t => t.status === 'Hutang');
     if (activeDebts.length === 0) {
         list.innerHTML = `<p style="font-size:12px; color:var(--text-muted); text-align:center; padding:24px;">Tidak ada piutang aktif.</p>`;
@@ -752,6 +652,7 @@ function renderGlobalHistoryList() {
     const list = document.getElementById('global-history-list');
     if (!list) return;
     list.innerHTML = "";
+    
     if (state.transactions.length === 0) {
         list.innerHTML = `<p style="font-size:12px; color:var(--text-muted); text-align:center; padding:24px;">Belum ada aktivitas transaksi.</p>`;
         return;
@@ -777,6 +678,7 @@ function renderCharts() {
     const ctxGrowth = document.getElementById('chartGrowth');
     const ctxSpending = document.getElementById('chartSpending');
     if (!ctxGrowth || !ctxSpending || !window.Chart) return;
+
     if (chartGrowthInstance) chartGrowthInstance.destroy();
     if (chartSpendingInstance) chartSpendingInstance.destroy();
 
