@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SolPay Digital — Premium Business Hub</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="../css/style.css">
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <div class="app-container">
+        
+        <header class="app-header">
+            <div class="logo">Sol<span class="gradient-text">Pay</span> <span class="sub-logo">Digital</span></div>
+            <div class="header-action">
+                <div class="pulse-indicator"></div>
+                <span class="status-text">Solana Node Active</span>
+            </div>
+        </header>
+
+        <main class="app-content">
+            
+            <section id="view-home" class="app-view active">
+                <div class="welcome-bar">
+                    <h1>Dashboard Utama</h1>
+                    <p>Ringkasan finansial & bisnis harian Anda.</p>
+                </div>
+
+                <div class="main-balance-card">
+                    <span class="card-label">Total Saldo Utama</span>
+                    <h2 id="txt-main-balance">Rp0</h2>
+                    <div class="card-meta">
+                        <span id="badge-growth" class="badge success-badge">
+                            <i data-lucide="trending-up"></i> 
+                            <span id="txt-growth">+0% mggu ini</span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card" style="grid-column: span 2; border-color: rgba(20, 241, 149, 0.3); background: linear-gradient(135deg, rgba(17,24,39,0.8) 0%, rgba(20,241,149,0.03) 100%);">
+                        <div class="stat-icon text-success"><i data-lucide="layers"></i></div>
+                        <span class="stat-label" style="color: #14F195; font-weight: 600;">Modal Khusus Jualan (Stok)</span>
+                        <h3 id="txt-modal-jualan" style="font-size: 20px; font-weight: 700;">Rp0</h3>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i data-lucide="wallet"></i></div>
+                        <span class="stat-label">Saldo Tunai Mandiri</span>
+                        <h3 id="txt-cash-balance">Rp0</h3>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon text-accent"><i data-lucide="smartphone"></i></div>
+                        <span class="stat-label">Saldo E-Wallet Pribadi</span>
+                        <h3 id="txt-ewallet-balance">Rp0</h3>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon text-success"><i data-lucide="dollar-sign"></i></div>
+                        <span class="stat-label">Profit Bisnis Berjalan</span>
+                        <h3 id="txt-business-profit">Rp0</h3>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon text-danger"><i data-lucide="receipt"></i></div>
+                        <span class="stat-label">Total Piutang (Hutang)</span>
+                        <h3 id="txt-total-piutang">Rp0</h3>
+                    </div>
+                </div>
+
+                <div class="section-title">Dompet Kategori</div>
+                <div class="category-grid">
+                    <div class="cat-card fashion-card">
+                        <div class="cat-header">
+                            <span>Fashion Balance</span>
+                            <i data-lucide="shirt"></i>
+                        </div>
+                        <h3 id="txt-fashion-balance">Rp0</h3>
+                    </div>
+                    <div class="cat-card skincare-card">
+                        <div class="cat-header">
+                            <span>Skincare Balance</span>
+                            <i data-lucide="sparkles"></i>
+                        </div>
+                        <h3 id="txt-skincare-balance">Rp0</h3>
+                    </div>
+                </div>
+
+                <div class="section-title">Visualisasi Data & Tren</div>
+                <div class="chart-container">
+                    <canvas id="chartGrowth"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="chartSpending"></canvas>
+                </div>
+            </section>
+
+            <section id="view-business" class="app-view">
+                <div class="welcome-bar">
+                    <h1>Kelola Bisnis</h1>
+                    <p>Sistem pencatatan otomatis transaksi pelanggan.</p>
+                </div>
+
+                <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 12px; margin-bottom: 20px; text-align: center; font-weight: 600; border: 1px solid rgba(255,255,255,0.05); font-size: 13px;">
+                    <span id="biz-health-indicator" style="letter-spacing: 0.5px;">🟢 Sehat: Arus Modal Aman</span>
+                </div>
+
+                <div class="business-menu-grid">
+                    <button class="biz-btn" onclick="openActionModal('kuota')">
+                        <i data-lucide="wifi"></i> <span>Pulsa / Kuota</span>
+                    </button>
+                    <button class="biz-btn" onclick="openActionModal('ewallet')">
+                        <i data-lucide="smartphone"></i> <span>Top Up E-Wallet</span>
+                    </button>
+                    <button class="biz-btn" onclick="openActionModal('tarik')">
+                        <i data-lucide="arrow-down-to-line"></i> <span>Tarik Tunai</span>
+                    </button>
+                </div>
+
+                <div class="section-title">Daftar Piutang Pelanggan</div>
+                <div id="piutang-list" class="list-container"></div>
+            </section>
+
+            <section id="view-weekly" class="app-view">
+                <div class="welcome-bar">
+                    <h1>Weekly Recap</h1>
+                    <p>Generate rekap otomatis setiap Minggu malam.</p>
+                </div>
+
+                <div class="recap-generator-box">
+                    <div class="recap-info-row">
+                        <span>Sisa Uang Cek (Pribadi):</span>
+                        <strong id="recap-cek-val">Rp0</strong>
+                    </div>
+                    <div class="recap-info-row">
+                        <span>Profit Bisnis Bersih:</span>
+                        <strong id="recap-profit-val" class="text-success">Rp0</strong>
+                    </div>
+
+                    <div style="background: rgba(0,0,0,0.2); border-radius: 10px; padding: 12px; margin: 15px 0; border: 1px solid rgba(255,255,255,0.05); text-align: left;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 6px;">
+                            <span>Progress Target Mingguan (Cek + Profit)</span>
+                            <span id="saving-percent-text" style="color: #14F195; font-weight: bold;">0% Tercapai</span>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 6px; height: 10px; width: 100%; overflow: hidden;">
+                            <div id="saving-progress-bar" style="background: linear-gradient(90deg, #14F195, #9945FF); height: 100%; width: 0%; transition: width 0.5s ease;"></div>
+                        </div>
+                    </div>
+
+                    <button class="btn-primary" id="btn-quick-celengan" style="background: #14F195; color: #000; margin-bottom: 10px; font-weight: 700;">
+                        <i data-lucide="target"></i> Sisihin Uang Saku Hari Ini
+                    </button>
+                    
+                    <button
+                       class="btn-primary"
+                       id="btn-transfer-kategori"
+                       style="
+                       background: #facc15;
+                      color: #000;
+                      margin-bottom: 10px;
+                      font-weight: 700; ">
+                     <i data-lucide="repeat"></i>
+                     Transfer Antar Pos
+                     </button>
+
+                    <hr class="divider">
+                    <button class="btn-primary" id="btn-generate-recap">
+                        <i data-lucide="refresh-cw"></i> Generate Weekly Recap
+                    </button>
+                </div>
+
+                <div class="section-title">Status Hutang Kategori Intern</div>
+                <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 10px; border: 1px dashed rgba(255,255,255,0.1); text-align: center; font-size: 12px;">
+                    <p id="internal-debt-status" style="color: #888; margin: 0;">Sistem seimbang. Tidak ada hutang kategori.</p>
+                </div>
+
+                <div class="section-title">Riwayat Rekap Mingguan</div>
+                <div id="recap-history-list" class="list-container"></div>
+            </section>
+
+            <section id="view-history" class="app-view">
+                <div class="welcome-bar">
+                    <h1>Riwayat Aktivitas</h1>
+                    <p>Semua log transaksi masuk, keluar, and bisnis.</p>
+                </div>
+                <div id="global-history-list" class="list-container"></div>
+            </section>
+
+            <section id="view-profile" class="app-view">
+                <div class="welcome-bar">
+                    <h1>Money Tracker & Config</h1>
+                    <p>Kelola uang saku, pengeluaran, dan pemasukan mandiri.</p>
+                </div>
+
+                <div class="glass-card">
+                    <h3 class="card-title-sm">Catat Mutasi Manual</h3>
+                    <form id="form-tracker" style="margin-top:12px;">
+                        
+                        <div class="input-group">
+                            <label>Jenis Log</label>
+                            <div class="custom-select-buttons" id="track-type-group">
+                                <button type="button" class="select-btn active" data-value="pemasukan">Pemasukan</button>
+                                <button type="button" class="select-btn" data-value="pengeluaran">Pengeluaran</button>
+                                <button type="button" class="select-btn" data-value="isi_modal">Isi Modal Jualan</button>
+                                <button type="button" class="select-btn" data-value="transfer">Transfer Saldo</button>
+                                <button type="button" class="select-btn" data-value="transfer_pos">
+                                Transfer Antar Pos
+                           </button>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label>Nominal (Rp)</label>
+                            <input type="number" id="track-nominal" class="form-input" placeholder="Contoh: 50000" required>
+                        </div>
+
+                        <div class="input-group" id="group-category" style="display:none;">
+                            <label>Kategori</label>
+                            <div class="custom-select-buttons scrollable" id="track-category-group">
+                                <button type="button" class="select-btn active" data-value="kebutuhan">Kebutuhan</button>
+                                <button type="button" class="select-btn" data-value="keinginan">Keinginan</button>
+                                <button type="button" class="select-btn" data-value="skincare">Skincare</button>
+                                <button type="button" class="select-btn" data-value="fashion">Fashion</button>
+                                <button type="button" class="select-btn" data-value="transport">Transport</button>
+                                <button type="button" class="select-btn" data-value="food">Food</button>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label>Sumber / Lokasi Saldo</label>
+                            <div class="custom-select-buttons" id="track-source-group">
+                                <button type="button" class="select-btn active" data-value="cash">Saldo Tunai</button>
+                                <button type="button" class="select-btn" data-value="ewallet">E-Wallet</button>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label>Catatan / Keterangan</label>
+                            <input type="text" id="track-notes" class="form-input" placeholder="Detail catatan...">
+                        </div>
+                        
+                        <button type="submit" class="btn-primary" style="margin-top:8px;">Simpan Transaksi</button>
+                    </form>
+                </div>
+
+                <div class="glass-card" style="margin-top:20px; text-align:center; border-color: rgba(239,68,68,0.2);">
+                    <h3 class="card-title-sm text-danger">Reset Aplikasi</h3>
+                    <p style="font-size:12px; color:var(--text-muted); margin: 6px 0 12px 0;">Menghapus seluruh memori data lokal di penyimpanan device ini.</p>
+                    <button type="button" class="btn-danger-outline" id="btn-clear-storage">Clear All LocalStorage</button>
+                    
+                    <button type="button" class="btn-danger-outline" id="btn-reset-system" style="margin-top: 10px; background: rgba(239,68,68,0.1); width: 100%;">🧼 Giga Reset Total (Murni 0)</button>
+                </div>
+            </section>
+
+        </main>
+
+        <div class="fab-wrapper" id="fabWrapper">
+            <button class="fab-trigger" id="fabTrigger">
+                <i data-lucide="plus" id="fab-icon"></i>
+            </button>
+            <div class="fab-menu" id="fabMenu">
+                <button onclick="openActionModal('kuota')"><i data-lucide="wifi"></i> Paket Kuota</button>
+                <button onclick="openActionModal('ewallet')"><i data-lucide="smartphone"></i> E-Wallet</button>
+                <button onclick="openActionModal('tarik')"><i data-lucide="arrow-down-to-line"></i> Tarik Tunai</button>
+                <button onclick="openManualTracker('pengeluaran')"><i data-lucide="arrow-up-right"></i> Pengeluaran</button>
+                <button onclick="openManualTracker('pemasukan')"><i data-lucide="arrow-down-left"></i> Pemasukan</button>
+            </div>
+        </div>
+
+        <nav class="bottom-nav">
+            <button class="nav-item active" data-view="home"><i data-lucide="home"></i><span>Home</span></button>
+            <button class="nav-item" data-view="business"><i data-lucide="briefcase"></i><span>Business</span></button>
+            <button class="nav-item" data-view="weekly"><i data-lucide="calendar"></i><span>Recap</span></button>
+            <button class="nav-item" data-view="history"><i data-lucide="history"></i><span>History</span></button>
+            <button class="nav-item" data-view="profile"><i data-lucide="user"></i><span>Profile</span></button>
+        </nav>
+
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="bottom-sheet" id="bottomSheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2 id="modal-title">Form Transaksi</h2>
+                <button class="close-modal-btn" id="btn-close-modal">&times;</button>
+            </div>
+            <div class="sheet-body">
+                <form id="form-business-action">
+                    <input type="hidden" id="biz-type">
+                    
+                    <div class="input-group">
+                        <label>Nama Pelanggan</label>
+                        <input type="text" id="biz-customer" class="form-input" placeholder="Masukkan nama" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Nominal Utama (Rp)</label>
+                        <input type="number" id="biz-nominal" class="form-input" placeholder="Contoh: 20000" required>
+                    </div>
+
+                    <div class="calc-preview-box">
+                        <div class="calc-row"><span>Harga Modal Diambil Dari Stok Jualan:</span> <span id="calc-base">Rp0</span></div>
+                        <div class="calc-row"><span>Keuntungan Bersih (Profit):</span> <span id="calc-base-profit" class="text-success">Rp0</span></div>
+                        <div class="calc-row total-row"><span>Total yang Harus Dibayar Pelanggan:</span> <span id="calc-total">Rp0</span></div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Status Pembayaran</label>
+                        <div class="custom-select-buttons" id="biz-status-group">
+                            <button type="button" class="select-btn active" data-value="Lunas">Lunas (Uang Masuk ke Kantong)</button>
+                            <button type="button" class="select-btn" data-value="Hutang">Hutang (Masuk Piutang)</button>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Uang Diterima Ke (Jika Lunas)</label>
+                        <div class="custom-select-buttons" id="biz-source-group">
+                            <button type="button" class="select-btn active" data-value="cash">Saldo Tunai</button>
+                            <button type="button" class="select-btn" data-value="ewallet">E-Wallet</button>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Catatan Tambahan</label>
+                        <input type="text" id="biz-notes" class="form-input" placeholder="Nomor HP atau keterangan tambahan...">
+                    </div>
+
+                    <button type="submit" class="btn-primary" style="margin-top:16px;">Konfirmasi & Simpan</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="confirmOverlay">
+        <div class="custom-alert-box">
+            <div class="alert-icon"><i data-lucide="check-circle"></i></div>
+            <h3>Konfirmasi Pelunasan</h3>
+            <p>Apakah Anda yakin pelanggan ini sudah membayar lunas? Uang pembayaran + untung akan masuk ke saldo dompet pilihan Anda.</p>
+            
+            <div class="input-group" style="text-align: left; margin-bottom: 16px;">
+                <label>Terima Uang Lunas Ke:</label>
+                <div class="custom-select-buttons" id="confirm-receive-group">
+                    <button type="button" class="select-btn active" data-value="cash">Saldo Tunai</button>
+                    <button type="button" class="select-btn" data-value="ewallet">E-Wallet</button>
+                </div>
+            </div>
+
+            <div class="alert-actions">
+                <button type="button" class="btn-secondary" id="btn-confirm-cancel">Batal</button>
+                <button type="button" class="btn-primary" id="btn-confirm-yes">Ya, Lunas</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/script.js"></script>
+</body>
+</html>
