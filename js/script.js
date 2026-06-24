@@ -1,718 +1,2085 @@
-// --- INITIAL STATE & LOCALSTORAGE ---
+/* =========================================
+   SOLPAY - Core Logic
+   Vanilla JS, Zero Frameworks
+========================================= */
+
+// --- INITIAL STATE ---
 const DEFAULT_STATE = {
     balances: {
-        main: 136000,
-        main_baseline: 136000, 
-        modal_jualan: 36000,   
-        cash: 75000,           
-        ewallet: 25000,         
-        profit: 0,
-        piutang: 125000,
+        main: { cash: 0, dana: 0 },
+        fashion: { cash: 0, dana: 0 },
+        skincare: { cash: 0, dana: 0 },
+        business: { cash: 0, dana: 0 }
+    },
+
+    debt: {
+        f_to_s: 0,
+        s_to_f: 0,
+        business_to_fashion: 0,
+        business_to_skincare: 0,
+        skincare_to_fashion: 0,
+        fashion_to_skincare: 0
+    },
+
+    businessDebt: {
         fashion: 0,
         skincare: 0
     },
-    transactions: [],
-    recapHistory: [],
-    categoryDebts: [],
-    weeklyTarget: 50000 // Target default 50k
+
+    goals: [],
+    receivables: [],
+    businessLoans: [],
+    history: [],
+    streak: { count: 0, lastDate: null },
+    recapDoneWeekId: null,
+    weeklyHistory: [],
+    statsWeekId: null,
+    purchaseLog: [],
+    piggyBank: {
+        solana: {
+            cycleStart: null,
+            cycleAmount: 0,
+            cycleToppedUp: 0,
+            cycleTarget: 150000,
+            pendingAmount: 0,
+            exchangeTotal: 0,
+            minDeposit: 5000,
+            depositLog: [],
+            topupLog: [],
+            cycleHistory: []
+        },
+        fashion: {
+            balance: 0,
+            minDeposit: 3000,
+            depositLog: []
+        }
+    }
 };
 
-let state = JSON.parse(localStorage.getItem('solpay_state')) || JSON.parse(JSON.stringify(DEFAULT_STATE));
-let lastDeletedTransaction = null;
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+let activeDayIndex = getTodayIndex();
+let tempUndoTransaction = null;
+let currentTrxType = "expense";
+let currentAdjType = "add";
+let isDebtMode = false;
 
-function saveState() {
-    localStorage.setItem('solpay_state', JSON.stringify(state));
-    renderAll();
+// --- UTILS ---
+function formatIDR(amount) {
+    const sign = amount < 0 ? "-" : "";
+    return sign + "Rp" + Math.abs(amount).toLocaleString("id-ID");
+}
+function formatSignedIDR(amount) {
+    if (amount === 0) return "Rp0";
+    return (
+        (amount > 0 ? "+" : "-") +
+        "Rp" +
+        Math.abs(amount).toLocaleString("id-ID")
+    );
+}
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+function getTodayIndex() {
+    let day = new Date().getDay();
+    return day === 0 ? 6 : day - 1;
 }
 
-let chartGrowthInstance = null;
-let chartSpendingInstance = null;
-
-document.addEventListener('DOMContentLoaded', () => {
-    initNavigation();
-    initFAB();
-    initForms();
-    initLiveCalc();
-    initCustomSelects();
-    initQuickRecapActions();
-    initConfirmationEvents(); 
-    renderAll();
-    if (window.lucide) lucide.createIcons();
-});
-
-// --- CUSTOM INTERACTIVE CHIPS SELECTION LOGIC ---
-function initCustomSelects() {
-    const groups = ['track-type-group', 'track-category-group', 'track-source-group', 'biz-status-group', 'biz-source-group', 'confirm-receive-group'];
-    groups.forEach(groupId => {
-        const groupEl = document.getElementById(groupId);
-        if (!groupEl) return;
-        
-        groupEl.addEventListener('click', (e) => {
-            const button = e.target.closest('.select-btn');
-            if (!button) return;
-            
-            groupEl.querySelectorAll('.select-btn').forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
-            
-            if (groupId === 'track-type-group') {
-                const val = button.getAttribute('data-value');
-                const catGroup = document.getElementById('group-category');
-                
-                if (catGroup) {
-                    if (val === 'pengeluaran' || val === 'transfer_pos') {
-    catGroup.style.display = 'flex';
-} else {
-    catGroup.style.display = 'none';
-}
-                }
-            }
-        });
-    });
-}
-
-function getCustomSelectValue(groupId) {
-    const groupEl = document.getElementById(groupId);
-    if (!groupEl) return null;
-    const activeBtn = groupEl.querySelector('.select-btn.active');
-    return activeBtn ? activeBtn.getAttribute('data-value') : null;
-}
-
-function setCustomSelectValue(groupId, value) {
-    const groupEl = document.getElementById(groupId);
-    if (!groupEl) return;
-    groupEl.querySelectorAll('.select-btn').forEach(btn => {
-        if (btn.getAttribute('data-value') === value) btn.classList.add('active');
-        else btn.classList.remove('active');
-    });
-}
-
-// --- NAVIGATION SYSTEM ---
-function initNavigation() {
-    document.querySelectorAll('.bottom-nav .nav-item').forEach(item => {
-        item.addEventListener('click', () => {
-            document.querySelectorAll('.bottom-nav .nav-item').forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-            switchView(item.getAttribute('data-view'));
-        });
-    });
-}
-
-function switchView(viewId) {
-    document.querySelectorAll('.app-view').forEach(view => view.classList.remove('active'));
-    const activeView = document.getElementById(`view-${viewId}`);
-    if (activeView) activeView.classList.add('active');
-    if (viewId === 'home' || viewId === 'analytics') renderCharts();
-}
-
-// --- FAB UTILITIES ---
-function initFAB() {
-    const fabWrapper = document.getElementById('fabWrapper');
-    if (!fabWrapper) return;
-    document.getElementById('fabTrigger').addEventListener('click', (e) => {
-        e.stopPropagation();
-        fabWrapper.classList.toggle('open');
-    });
-    document.addEventListener('click', () => fabWrapper.classList.remove('open'));
-}
-
-function openManualTracker(type) {
-    switchView('profile');
-    setCustomSelectValue('track-type-group', type);
-    const catGroup = document.getElementById('group-category');
-    if (catGroup) {
-    catGroup.style.display =
-        (type === 'pengeluaran' || type === 'transfer_pos')
-            ? 'flex'
-            : 'none';
-}
-    showToast(`✨ Input manual ${type} dibuka`);
-}
-
-function showToast(message, allowUndo = false) {
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
-    
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    let undoButtonHtml = allowUndo ? `<button onclick="undoDeleteTransaction()" style="background:none; border:none; color:#14F195; font-weight:700; margin-left:10px; cursor:pointer;">UNDO</button>` : '';
-    
-    toast.innerHTML = `<span>${message}</span>${undoButtonHtml}`;
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.classList.add('fade-out');
-        toast.addEventListener('animationend', () => toast.remove());
-    }, 4000);
-}
-
-// TRANSACTIONS MODAL OVERLAY
-const modalOverlay = document.getElementById('modalOverlay');
-function openActionModal(type) {
-    const form = document.getElementById('form-business-action');
-    if (form) form.reset();
-    if (modalOverlay) modalOverlay.classList.add('open');
-    document.getElementById('biz-type').value = type;
-    
-    const titleEl = document.getElementById('modal-title');
-    if (titleEl) {
-        if (type === 'kuota') titleEl.innerText = '⚡ Transaksi Pulsa / Kuota';
-        if (type === 'ewallet') titleEl.innerText = '💸 Top Up E-Wallet';
-        if (type === 'tarik') titleEl.innerText = '🏧 Tarik Tunai Dana';
-    }
-    updateLiveCalc();
-}
-
-function closeModal() { if (modalOverlay) modalOverlay.classList.remove('open'); }
-const closeBtn = document.getElementById('btn-close-modal');
-if (closeBtn) closeBtn.addEventListener('click', closeModal);
-if (modalOverlay) {
-    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
-}
-
-function initLiveCalc() {
-    const bizNominal = document.getElementById('biz-nominal');
-    if (bizNominal) bizNominal.addEventListener('input', updateLiveCalc);
-}
-
-function updateLiveCalc() {
-    const type = document.getElementById('biz-type').value;
-    const nominal = parseFloat(document.getElementById('biz-nominal').value) || 0;
-    
-    let profit = 0;
-    if (type === 'kuota') profit = 3000; 
-    else if (type === 'ewallet') profit = 5000; 
-    else if (type === 'tarik') profit = nominal < 100000 ? 3000 : 5000; 
-    
-    const baseEl = document.getElementById('calc-base');
-    const profitEl = document.getElementById('calc-base-profit'); 
-    const totalEl = document.getElementById('calc-total');
-    
-    if (baseEl) baseEl.innerText = formatIDR(nominal);
-    if (profitEl) profitEl.innerText = `+${formatIDR(profit)}`;
-    if (totalEl) totalEl.innerText = formatIDR(nominal + profit);
-}
-
-function initQuickRecapActions() {
-    const btnCelengan = document.getElementById('btn-quick-celengan');
-    if (btnCelengan) {
-        btnCelengan.addEventListener('click', () => {
-            switchView('profile');
-            setCustomSelectValue('track-type-group', 'pemasukan');
-            document.getElementById('track-notes').value = "Celengan Harian Target Solana";
-            document.getElementById('track-nominal').focus();
-            showToast("🎯 Silakan ketik nominal saldo celengan harian lu!");
-        });
-    }
-}
-
-// CORE SYSTEM FORM HANDLING
-function initForms() {
-    const formBiz = document.getElementById('form-business-action');
-    if (formBiz) {
-        formBiz.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const type = document.getElementById('biz-type').value;
-            const customer = document.getElementById('biz-customer').value || 'Pelanggan';
-            const nominal = parseFloat(document.getElementById('biz-nominal').value);
-            const status = getCustomSelectValue('biz-status-group') || 'Lunas';
-            const receiveTarget = getCustomSelectValue('biz-source-group') || 'cash';
-            const notes = document.getElementById('biz-notes').value;
-            
-            if (isNaN(nominal) || nominal <= 0) {
-                showToast("❌ Nominal tidak valid!");
-                return;
-            }
-
-            let profit = 0;
-            if (type === 'kuota') profit = 3000; 
-            else if (type === 'ewallet') profit = 5000; 
-            else if (type === 'tarik') profit = nominal < 100000 ? 3000 : 5000; 
-            
-            const totalPayment = nominal + profit;
-            
-            if (state.balances.modal_jualan < nominal) {
-                showToast(`❌ Stok Modal Jualan tidak cukup!`);
-                return;
-            }
-            
-            state.balances.modal_jualan -= nominal;
-            
-            if (status === 'Lunas') {
-                state.balances.modal_jualan += nominal; 
-                
-                if (receiveTarget === 'cash') state.balances.cash += profit;
-                else state.balances.ewallet += profit;
-                
-                state.balances.profit += profit;
-                showToast(`✅ Transaksi Sukses! Modal Pokok kembali dikunci, Profit masuk kas ${receiveTarget.toUpperCase()}`);
-            } else {
-                state.balances.piutang += totalPayment;
-                showToast(`⚠ Hutang dicatat atas nama ${customer}`);
-            }
-            
-            state.transactions.unshift({
-                id: 'TX-' + Date.now(),
-                customer: customer,
-                type: type, 
-                nominal: nominal,
-                profit: profit,
-                totalPayment: totalPayment,
-                status: status, 
-                source: receiveTarget,
-                notes: notes,
-                date: new Date().toLocaleString('id-ID')
-            });
-            
-            saveState();
-            closeModal();
-        });
-    }
-
-    const formTracker = document.getElementById('form-tracker');
-    if (formTracker) {
-        formTracker.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const type = getCustomSelectValue('track-type-group') || 'pemasukan';
-            const nominal = parseFloat(document.getElementById('track-nominal').value);
-            const category = getCustomSelectValue('track-category-group');
-            const source = getCustomSelectValue('track-source-group') || 'cash';
-            const notes = document.getElementById('track-notes').value || '';
-            
-            if (isNaN(nominal) || nominal <= 0) {
-                showToast("❌ Masukkan nominal angka yang valid!");
-                return;
-            }
-
-            if (
-    type === 'transfer' ||
-    notes.toLowerCase().includes('pindah') ||
-    notes.toLowerCase().includes('transfer')
-) {
-                if (source === 'cash') {
-                    if (state.balances.cash < nominal) { showToast("❌ Saldo Tunai lu gak cukup buat dipindahin!"); return; }
-                    state.balances.cash -= nominal;
-                    state.balances.ewallet += nominal;
-                    showToast(`🔄 Sukses memindahkan ${formatIDR(nominal)} dari Tunai ke E-Wallet!`);
-                } else {
-                    if (state.balances.ewallet < nominal) { showToast("❌ Saldo E-Wallet lu gak cukup buat dipindahin!"); return; }
-                    state.balances.ewallet -= nominal;
-                    state.balances.cash += nominal;
-                    showToast(`🔄 Sukses memindahkan ${formatIDR(nominal)} dari E-Wallet ke Tunai!`);
-                }
-            } 
-            else if (type === 'transfer_pos') {
-    const fromCategory = category;
-    const toCategory =
-        category === 'fashion'
-            ? 'skincare'
-            : 'fashion';
-
-    if (state.balances[fromCategory] < nominal) {
-        showToast(`❌ Saldo ${fromCategory} tidak cukup!`);
-        return;
-    }
-
-    state.balances[fromCategory] -= nominal;
-    state.balances[toCategory] += nominal;
-
-    showToast(
-        `🔄 Transfer ${formatIDR(nominal)} dari ${fromCategory.toUpperCase()} ke ${toCategory.toUpperCase()} berhasil!`
+function getWeekId() {
+    let d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+    let week1 = new Date(d.getFullYear(), 0, 4);
+    return (
+        d.getFullYear() +
+        "-W" +
+        Math.round(
+            ((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7
+        )
     );
 }
 
-            
-            else if (type === 'isi_modal') {
-                if (source === 'cash' && state.balances.cash < nominal) { showToast(`❌ Saldo Cash tidak cukup!`); return; }
-                if (source === 'ewallet' && state.balances.ewallet < nominal) { showToast(`❌ Saldo E-Wallet tidak cukup!`); return; }
-                
-                if (source === 'cash') state.balances.cash -= nominal;
-                else state.balances.ewallet -= nominal;
-                
-                state.balances.modal_jualan += nominal;
-                showToast(`⚡ Sukses isi ulang Modal Dagang +${formatIDR(nominal)}`);
-            } 
-            else if (type === 'pemasukan') {
-                if (source === 'cash') state.balances.cash += nominal;
-                else state.balances.ewallet += nominal;
-                showToast(`💸 Pemasukan kas berhasil disimpan.`);
-            } 
-            else { 
-                if (category === 'skincare' || category === 'fashion') {
-                    handleCategorySpending(category, nominal);
-                } else {
-                    if (source === 'cash') {
-                        if (state.balances.cash < nominal) { showToast(`❌ Kas Cash tidak cukup!`); return; }
-                        state.balances.cash -= nominal;
-                    } else {
-                        if (state.balances.ewallet < nominal) { showToast(`❌ Kas E-Wallet tidak cukup!`); return; }
-                        state.balances.ewallet -= nominal;
-                    }
-                }
-                showToast(`🔴 Pengeluaran dicatat.`);
-            }
-            
-            state.transactions.unshift({
-                id: 'MNT-' + Date.now(),
-                customer: 'Self (Tracker)',
-                type: type === 'isi_modal' ? 'Isi Modal' : type, 
-                nominal: nominal,
-                profit: 0,
-                totalPayment: nominal,
-                status: 'Lunas',
-                source: (category === 'skincare' || category === 'fashion') ? 'Pos Kategori' : source,
-                notes: notes || `Kategori: ${category || 'Umum'}`,
-                date: new Date().toLocaleString('id-ID')
-            });
-            
-            formTracker.reset();
-            saveState();
-        });
+function getMonday(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    d.setDate(diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function formatDateShort(d) {
+    const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "Mei",
+        "Jun",
+        "Jul",
+        "Agu",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Des"
+    ];
+    return `${d.getDate()} ${months[d.getMonth()]}`;
+}
+
+function checkWeeklyReset() {
+    const currentWeekId = getWeekId();
+
+    if (!state.statsWeekId) {
+        state.statsWeekId = currentWeekId;
+        return;
     }
 
-    const btnRecap = document.getElementById('btn-generate-recap');
-    if (btnRecap) {
-        btnRecap.addEventListener('click', () => {
-            const remainingPersonalCheck = state.balances.cash + state.balances.ewallet;
-            const profit = state.balances.profit;
-            
-            if (remainingPersonalCheck <= 0) {
-                showToast(`⚠ Kas kosong, tidak ada saldo harian berjalan untuk di-recap.`);
+    if (state.statsWeekId === currentWeekId) return;
+
+    // Minggu berganti → archive data minggu lalu
+    const todayMonday = getMonday(new Date());
+    const lastWeekMonday = new Date(todayMonday);
+    lastWeekMonday.setDate(lastWeekMonday.getDate() - 7);
+    const lastWeekSunday = new Date(todayMonday);
+    lastWeekSunday.setDate(lastWeekSunday.getDate() - 1);
+
+    let weekIncome = 0,
+        weekExpense = 0,
+        weekProfit = 0;
+    state.history.forEach(h => {
+        if (h.cat === "main") {
+            if (h.isBusinessProfit) weekProfit += h.amount;
+            else if (h.type === "income") weekIncome += h.amount;
+            else if (h.type === "expense") weekExpense += h.amount;
+        }
+    });
+
+    state.weeklyHistory.unshift({
+        id: generateId(),
+        label: `${formatDateShort(lastWeekMonday)} - ${formatDateShort(lastWeekSunday)} ${lastWeekSunday.getFullYear()}`,
+        income: weekIncome,
+        expense: weekExpense,
+        profit: weekProfit
+    });
+
+    if (state.weeklyHistory.length > 12)
+        state.weeklyHistory = state.weeklyHistory.slice(0, 12);
+
+    state.history = [];
+    state.statsWeekId = currentWeekId;
+}
+
+function deepCopy(obj) {
+    return JSON.parse(JSON.stringify(obj));
+}
+
+// --- BUSINESS AUTO BORROW ---
+function ensureBusinessCapital(requiredAmount) {
+    let current = state.balances.business.dana;
+
+    if (current >= requiredAmount) return true;
+
+    let shortage = requiredAmount - current;
+
+    // Pinjam dari Fashion dulu
+    const fashionAvail = state.balances.fashion.dana;
+
+    if (fashionAvail > 0) {
+        const borrow = Math.min(shortage, fashionAvail);
+
+        state.balances.fashion.dana -= borrow;
+        state.balances.business.dana += borrow;
+        state.businessDebt.fashion += borrow;
+
+        shortage -= borrow;
+    }
+
+    // Kalau masih kurang → pinjam skincare
+    if (shortage > 0) {
+        const skinAvail = state.balances.skincare.dana;
+
+        if (skinAvail > 0) {
+            const borrow = Math.min(shortage, skinAvail);
+
+            state.balances.skincare.dana -= borrow;
+            state.balances.business.dana += borrow;
+            state.businessDebt.skincare += borrow;
+
+            shortage -= borrow;
+        }
+    }
+
+    // Kalau tetap kurang modal
+    if (shortage > 0) {
+        showSnackbar("Modal semua pos tidak cukup 😭");
+        return false;
+    }
+
+    showSnackbar("Business auto pinjam modal ✨");
+    return true;
+}
+
+// --- SPEND FROM POS (dengan auto-borrow jika kurang) ---
+function spendFromPos(cat, wallet, amount) {
+    const current = state.balances[cat][wallet];
+
+    if (amount <= current) {
+        state.balances[cat][wallet] -= amount;
+        return true;
+    }
+
+    let shortage = amount - current;
+    const other = cat === "fashion" ? "skincare" : "fashion";
+    const otherAvail = state.balances[other][wallet];
+
+    if (shortage <= otherAvail) {
+        state.balances[other][wallet] -= shortage;
+        state.balances[cat][wallet] += shortage;
+
+        const debtKey = `${cat}_to_${other}`;
+        if (state.debt[debtKey] !== undefined) {
+            state.debt[debtKey] += shortage;
+        }
+
+        state.balances[cat][wallet] -= amount;
+        showSnackbar(`⚠️ ${cat} pinjam ${formatIDR(shortage)} dari ${other}`);
+        return true;
+    }
+
+    showSnackbar(`❌ Saldo ${cat} tidak cukup`);
+    return false;
+}
+
+// --- AUTO REPAY BUSINESS DEBT ---
+function repayBusinessDebt() {
+    const targetModal = 150000;
+
+    let excess = state.balances.business.dana - targetModal;
+
+    if (excess <= 0) return;
+
+    // Balikin ke Fashion dulu
+    if (state.businessDebt.fashion > 0) {
+        const repay = Math.min(excess, state.businessDebt.fashion);
+
+        state.balances.business.dana -= repay;
+        state.balances.fashion.dana += repay;
+
+        state.businessDebt.fashion -= repay;
+        excess -= repay;
+    }
+
+    // Balikin ke Skincare
+    if (excess > 0 && state.businessDebt.skincare > 0) {
+        const repay = Math.min(excess, state.businessDebt.skincare);
+
+        state.balances.business.dana -= repay;
+        state.balances.skincare.dana += repay;
+
+        state.businessDebt.skincare -= repay;
+    }
+}
+
+// --- STORAGE & INIT ---
+function loadData() {
+    const saved = localStorage.getItem("solpay_data");
+    if (saved) state = JSON.parse(saved);
+
+    if (!state.weeklyHistory) state.weeklyHistory = [];
+    if (state.statsWeekId === undefined) state.statsWeekId = null;
+    if (!state.purchaseLog) state.purchaseLog = [];
+    if (!state.piggyBank)
+        state.piggyBank = JSON.parse(JSON.stringify(DEFAULT_STATE.piggyBank));
+
+    checkWeeklyReset();
+
+    state.receivables = state.receivables.map(r => {
+        if (r.capReimburse !== undefined) {
+            return {
+                id: r.id,
+                name: r.desc.split("-")[1]?.trim() || "Unknown Customer",
+                items: [
+                    {
+                        desc: r.desc.split("-")[0]?.trim() || "Biz",
+                        cap: r.capReimburse,
+                        profit: r.profit
+                    }
+                ],
+                totalDebt: r.amount,
+                totalCapital: r.capReimburse,
+                totalProfit: r.profit,
+                paidAmount: 0,
+                status: "pending",
+                paymentWallets: []
+            };
+        }
+        return r;
+    });
+
+    checkStreak();
+    renderAll();
+    checkRecapReminder();
+}
+
+function saveData() {
+    localStorage.setItem("solpay_data", JSON.stringify(state));
+    renderAll();
+}
+
+function renderAll() {
+    renderBalances();
+    renderTracker();
+    renderActivity();
+    renderGoals();
+    renderBusiness();
+    renderWeeklyHistory();
+    renderPiggyCards();
+
+    // Memastikan Lucide hanya dipanggil jika library sudah siap
+    if (typeof lucide !== "undefined") {
+        lucide.createIcons();
+    }
+}
+
+// --- MODAL UTILS (Single Queue System) ---
+let modalTimeout = null;
+function openModal(id) {
+    const targetModal = document.getElementById(id);
+
+    // PENGAMAN: Jika modal yang dipanggil gak ada di HTML, stop di sini secara elegan!
+    if (!targetModal) {
+        console.error(
+            `Gagal membuka modal: Elemen dengan ID "${id}" tidak ditemukan di HTML!`
+        );
+        return;
+    }
+
+    if (id === "addTransactionModal") {
+        refreshPiggyPlaceholders();
+        document.getElementById("trxPiggySolana").value = "";
+        document.getElementById("trxPiggyFashion").value = "";
+        document.getElementById("piggyQuickAddSection").classList.add("hidden");
+    }
+
+    const activeModal = document.querySelector(".modal-overlay.active");
+    if (activeModal && activeModal.id !== id) {
+        activeModal.classList.remove("active");
+        clearTimeout(modalTimeout);
+        modalTimeout = setTimeout(() => {
+            targetModal.classList.add("active");
+        }, 300);
+    } else {
+        targetModal.classList.add("active");
+    }
+}
+
+function closeModal(id, event) {
+    if (event && event.target.id !== id) return;
+    const targetModal = document.getElementById(id);
+    if (targetModal) {
+        targetModal.classList.remove("active");
+    }
+}
+
+// --- CUSTOM SELECT (Pill System) ---
+function selectPill(inputId, value) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.value = value;
+
+    const group = document.getElementById("group_" + inputId);
+    if (group) {
+        group
+            .querySelectorAll(".select-pill")
+            .forEach(el => el.classList.remove("active"));
+        const target = group.querySelector(`[data-val="${value}"]`);
+        if (target) target.classList.add("active");
+    }
+
+    if (inputId === "bizProduct") updateBizProfit();
+    if (inputId === "bizStatus") {
+        const isReceivable = value === "receivable";
+        document.getElementById("bizNameGroup").style.display = isReceivable
+            ? "block"
+            : "none";
+        document.getElementById("bizToWalletGroup").style.display = isReceivable
+            ? "none"
+            : "block";
+        updateBizProfit();
+    }
+}
+function setPillValue(inputId, value) {
+    selectPill(inputId, value);
+}
+
+// --- RENDERERS ---
+function renderBalances() {
+    const b = state.balances;
+
+    // Hitung income dan expense minggu ini untuk Main
+    let weekIncome = 0;
+    let weekExpense = 0;
+    state.history.forEach(h => {
+        if (h.cat === "main") {
+            if (h.type === "income" || h.isBusinessProfit)
+                weekIncome += h.amount;
+            else if (h.type === "expense") weekExpense += h.amount;
+        }
+    });
+    const weekIncomeEl = document.getElementById("mainWeekIncome");
+    const weekExpenseEl = document.getElementById("mainWeekExpense");
+    if (weekIncomeEl) weekIncomeEl.textContent = "+" + formatIDR(weekIncome);
+    if (weekExpenseEl) weekExpenseEl.textContent = "-" + formatIDR(weekExpense);
+    const totals = {
+        main: b.main.cash + b.main.dana,
+        fashion: b.fashion.cash + b.fashion.dana,
+        skincare: b.skincare.cash + b.skincare.dana,
+        business: b.business.cash + b.business.dana
+    };
+    const wealth =
+        totals.main + totals.fashion + totals.skincare + totals.business;
+
+    const totalWealthEl = document.getElementById("totalWealth");
+    if (totalWealthEl) {
+        totalWealthEl.textContent = formatIDR(wealth);
+    }
+
+    ["main", "fashion", "skincare", "business"].forEach(cat => {
+        const totalEl = document.getElementById(`${cat}BalanceTotal`);
+
+        const cashEl = document.getElementById(`${cat}Cash`);
+
+        const danaEl = document.getElementById(`${cat}Dana`);
+
+        if (totalEl) totalEl.textContent = formatIDR(totals[cat]);
+
+        if (cashEl) cashEl.textContent = formatIDR(b[cat].cash);
+
+        if (danaEl) danaEl.textContent = formatIDR(b[cat].dana);
+    });
+
+    // Update debt info di kartu
+    const bd = state.businessDebt;
+    const fashionDebtEl = document.getElementById("fashionDebtInfo");
+    const skincareDebtEl = document.getElementById("skincareDebtInfo");
+    const businessDebtEl = document.getElementById("businessDebtInfo");
+
+    let fashionMsg = [];
+    let skincareMsg = [];
+    let businessMsg = [];
+
+    if (bd.fashion > 0) {
+        businessMsg.push(`Hutang ke Fashion: ${formatIDR(bd.fashion)}`);
+        fashionMsg.push(`Dipinjam Bisnis: ${formatIDR(bd.fashion)}`);
+    }
+    if (bd.skincare > 0) {
+        businessMsg.push(`Hutang ke Skincare: ${formatIDR(bd.skincare)}`);
+        skincareMsg.push(`Dipinjam Bisnis: ${formatIDR(bd.skincare)}`);
+    }
+    if (state.debt.skincare_to_fashion > 0) {
+        fashionMsg.push(
+            `Dipinjam Skincare: ${formatIDR(state.debt.skincare_to_fashion)}`
+        );
+        skincareMsg.push(
+            `Hutang ke Fashion: ${formatIDR(state.debt.skincare_to_fashion)}`
+        );
+    }
+    if (state.debt.fashion_to_skincare > 0) {
+        skincareMsg.push(
+            `Dipinjam Fashion: ${formatIDR(state.debt.fashion_to_skincare)}`
+        );
+        fashionMsg.push(
+            `Hutang ke Skincare: ${formatIDR(state.debt.fashion_to_skincare)}`
+        );
+    }
+
+    if (fashionDebtEl)
+        fashionDebtEl.textContent = fashionMsg.length
+            ? fashionMsg.join(" | ")
+            : "Tidak ada pinjaman";
+    if (skincareDebtEl)
+        skincareDebtEl.textContent = skincareMsg.length
+            ? skincareMsg.join(" | ")
+            : "Tidak ada pinjaman";
+    if (businessDebtEl)
+        businessDebtEl.textContent = businessMsg.length
+            ? businessMsg.join(" | ")
+            : "Tidak ada pinjaman";
+
+    // Stat kartu Fashion dan Skincare: goal terdekat
+    ["fashion", "skincare"].forEach(cat => {
+        const goals = state.goals.filter(g => g.cat === cat);
+        const nameEl = document.getElementById(`${cat}GoalName`);
+        const progEl = document.getElementById(`${cat}GoalProgress`);
+        if (!nameEl || !progEl) return;
+        if (goals.length === 0) {
+            nameEl.textContent = "Belum ada goal";
+            progEl.textContent = "—";
+        } else {
+            const bal = state.balances[cat].cash + state.balances[cat].dana;
+            const nearest = goals.reduce((prev, curr) => {
+                const prevPct = prev.amount > 0 ? bal / prev.amount : 0;
+                const currPct = curr.amount > 0 ? bal / curr.amount : 0;
+                return currPct > prevPct ? curr : prev;
+            });
+            const pct = Math.min((bal / nearest.amount) * 100, 100).toFixed(0);
+            nameEl.textContent = nearest.name;
+            progEl.textContent = `${pct}%`;
+            progEl.style.color = pct == 100 ? "var(--green)" : "inherit";
+        }
+    });
+
+    // Stat kartu Business
+    const bizProfitEl = document.getElementById("businessWeekProfit");
+    const bizDebtEl = document.getElementById("businessActiveDebt");
+    if (bizProfitEl) {
+        const weekProfit = state.history
+            .filter(h => h.isBusinessProfit)
+            .reduce((s, h) => s + h.amount, 0);
+        bizProfitEl.textContent = "+" + formatIDR(weekProfit);
+    }
+    if (bizDebtEl) {
+        const totalDebt = state.receivables.reduce(
+            (s, r) => s + (r.totalDebt - r.paidAmount),
+            0
+        );
+        bizDebtEl.textContent = formatIDR(totalDebt);
+    }
+}
+
+function renderTracker() {
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const scroll = document.getElementById("trackerScroll");
+    if (!scroll) return; // <-- TAMBAHKAN BARIS PENGAMAN INI
+
+    scroll.innerHTML = "";
+
+    let dailySums = [0, 0, 0, 0, 0, 0, 0];
+    state.history.forEach(h => {
+        if (
+            h.cat === "main" &&
+            (h.type === "income" || h.type === "expense" || h.isBusinessProfit)
+        ) {
+            let mult = h.type === "expense" ? -1 : 1;
+            dailySums[h.day] += h.amount * mult;
+        }
+    });
+
+    days.forEach((dayName, idx) => {
+        const div = document.createElement("div");
+        div.className = `day-pill ${idx === activeDayIndex ? "active" : ""}`;
+        div.onclick = () => {
+            activeDayIndex = idx;
+            renderAll();
+        };
+        let sumStr = formatSignedIDR(dailySums[idx]);
+
+        div.innerHTML = `
+            <div class="day-name">${dayName}</div>
+            <div class="day-amount" style="color: ${idx === activeDayIndex ? "inherit" : dailySums[idx] < 0 ? "var(--red)" : dailySums[idx] > 0 ? "var(--green)" : "inherit"}">${sumStr}</div>
+            ${
+                idx === activeDayIndex
+                    ? `
+            <div class="day-actions">
+                <button class="day-action-btn income" onclick="event.stopPropagation(); openPosAction('main','income')">+</button>
+                <button class="day-action-btn expense" onclick="event.stopPropagation(); openPosAction('main','expense')">-</button>
+            </div>`
+                    : ""
+            }
+        `;
+
+        scroll.appendChild(div);
+    });
+}
+
+function renderActivity() {
+    const list = document.getElementById("activityList");
+    if (!list) return; // <-- TAMBAHKAN BARIS PENGAMAN INI
+
+    list.innerHTML = "";
+
+    const dayLogs = state.history
+        .filter(h => h.day === activeDayIndex)
+        .reverse();
+
+    if (dayLogs.length === 0) {
+        list.innerHTML = `<p class="subtext text-center mt-3">No activity recorded for this day ✨</p>`;
+        return;
+    }
+
+    dayLogs.forEach(log => {
+        let icon = "circle";
+        let iconClass = "";
+        let sign = "";
+        let colorClass = "";
+        if (log.type === "income") {
+            icon = "arrow-down-left";
+            iconClass = "income";
+            sign = "+";
+            colorClass = "text-green";
+        } else if (log.type === "expense") {
+            icon = "arrow-up-right";
+            iconClass = "expense";
+            sign = "-";
+        } else if (log.type === "transfer") {
+            icon = "refresh-cw";
+        } else if (log.type === "business") {
+            icon = "briefcase";
+            iconClass = "income";
+            sign = "+";
+            colorClass = "text-green";
+        }
+
+        const div = document.createElement("div");
+        div.className = "activity-item";
+        div.innerHTML = `
+            <div class="act-icon ${iconClass}"><i data-lucide="${icon}"></i></div>
+            <div class="act-details">
+                <div class="act-title">${log.desc}</div>
+                <div class="act-sub">${log.wallet ? log.wallet.toUpperCase() : ""} ${log.cat ? "• " + log.cat : ""}</div>
+            </div>
+            <div class="act-amount ${colorClass}">${sign}${formatIDR(log.amount)}</div>
+            <div class="act-actions">
+                <button onclick="deleteLog('${log.id}')"><i data-lucide="trash-2"></i></button>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function renderGoals() {
+    const list = document.getElementById("goalsList");
+    if (!list) return; // <-- TAMBAHKAN BARIS PENGAMAN INI
+
+    list.innerHTML = "";
+
+    if (state.goals.length === 0) {
+        list.innerHTML = `<p class="subtext text-center">No goals set yet ✨</p>`;
+        return;
+    }
+
+    state.goals.forEach((g, idx) => {
+        const currentBal =
+            state.balances[g.cat].cash + state.balances[g.cat].dana;
+        let percent = Math.min((currentBal / g.amount) * 100, 100).toFixed(0);
+        let readyText =
+            percent == 100
+                ? `<span class="text-green fw-600">Ready to buy ✨</span>`
+                : "";
+
+        const div = document.createElement("div");
+        div.className = "goal-item";
+        div.innerHTML = `
+            <div class="goal-header">
+                <span>${g.name}</span>
+                <span>${formatIDR(currentBal)} / ${formatIDR(g.amount)}</span>
+            </div>
+            <div class="goal-sub">
+                <span>From ${g.cat.charAt(0).toUpperCase() + g.cat.slice(1)}</span>
+                ${readyText}
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: ${percent}%"></div>
+            </div>
+            <div class="text-right mt-2">
+                <button class="icon-btn-small" onclick="deleteGoal(${idx})"><i data-lucide="trash-2" style="width:14px"></i></button>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function renderBusiness() {
+    let weekProfit = state.history
+        .filter(h => h.isBusinessProfit)
+        .reduce((sum, h) => sum + h.amount, 0);
+
+    // Hitung total piutang aktif dari semua customer
+    let totalReceivable = state.receivables.reduce(
+        (sum, r) => sum + (r.totalDebt - r.paidAmount),
+        0
+    );
+
+    // RENDER KE UI DENGAN PENGAMAN YANG BENAR
+    const bizProfitEl = document.getElementById("bizProfit");
+    if (bizProfitEl) {
+        bizProfitEl.textContent = "+" + formatIDR(weekProfit);
+    }
+
+    const bizReceivableEl = document.getElementById("bizReceivable");
+    if (bizReceivableEl) {
+        bizReceivableEl.textContent = formatIDR(totalReceivable);
+    }
+
+    const rList = document.getElementById("receivablesList");
+    if (!rList) return; // Pengaman agar tidak error jika elemen list tidak ada
+
+    rList.innerHTML = "";
+
+    if (state.receivables.length === 0) {
+        rList.innerHTML = `<p class="subtext text-center mt-3">No pending receivables.</p>`;
+        return;
+    }
+
+    state.receivables.forEach(r => {
+        const rem = r.totalDebt - r.paidAmount;
+        const statusText =
+            r.paidAmount > 0 ? "🟠 Partial Payment" : "🔴 Unpaid";
+
+        let itemsHtml = r.items
+            .map(i => `• ${i.desc}: ${formatIDR(i.cap + i.profit)}`)
+            .join("<br>");
+
+        const div = document.createElement("div");
+        div.className = "customer-debt-card";
+        div.innerHTML = `
+            <div class="flex-between">
+                <div>
+                    <div class="fw-600" style="font-size:15px;">${r.name}</div>
+                    <div class="subtext">${statusText}</div>
+                </div>
+                <div class="text-right">
+                    <div class="fw-600 text-accent">${formatIDR(r.totalDebt)}</div>
+                    <div class="subtext">Rem: <span class="text-red">${formatIDR(rem)}</span></div>
+                </div>
+            </div>
+            <div class="debt-items-list">
+                ${itemsHtml}
+            </div>
+            <div class="flex-between">
+                <div style="font-size: 13px;" class="fw-500">Paid: <span class="text-green">${formatIDR(r.paidAmount)}</span></div>
+                <button class="btn-primary-small" onclick="openInstallmentModal('${r.id}')">+ Bayar Cicilan</button>
+            </div>
+        `;
+        rList.appendChild(div);
+    });
+}
+
+function renderWeeklyHistory() {
+    const list = document.getElementById("weeklyHistoryList");
+    if (!list) return;
+    list.innerHTML = "";
+
+    if (!state.weeklyHistory || state.weeklyHistory.length === 0) {
+        list.innerHTML = `<p class="subtext text-center">Belum ada history minggu sebelumnya ✨</p>`;
+        return;
+    }
+
+    state.weeklyHistory.forEach(w => {
+        const div = document.createElement("div");
+        div.className = "week-history-item";
+        div.innerHTML = `
+            <div class="week-history-header fw-600">${w.label}</div>
+            <div class="week-history-stats">
+                <span class="text-green">+${formatIDR(w.income)}</span>
+                <span class="text-red">-${formatIDR(w.expense)}</span>
+                <span class="text-accent">Profit +${formatIDR(w.profit)}</span>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+// --- PURCHASE LOG (Fashion/Skincare) ---
+function openPurchaseLog(cat) {
+    document.getElementById("purchaseLogTitle").innerHTML =
+        `Riwayat <span class="text-accent">Pembelian</span> - ${cat.charAt(0).toUpperCase() + cat.slice(1)}`;
+    renderPurchaseLog(cat);
+    openModal("purchaseLogModal");
+}
+
+function formatDateID(dateStr) {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "Mei",
+        "Jun",
+        "Jul",
+        "Agu",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Des"
+    ];
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function renderPurchaseLog(cat) {
+    const list = document.getElementById("purchaseLogList");
+    if (!list) return;
+    const items = state.purchaseLog.filter(p => p.cat === cat);
+    list.innerHTML = "";
+
+    if (items.length === 0) {
+        list.innerHTML = `<p class="subtext text-center">Belum ada catatan pembelian ✨</p>`;
+        return;
+    }
+
+    const today = new Date(new Date().toISOString().split("T")[0]);
+
+    items
+        .slice()
+        .reverse()
+        .forEach(item => {
+            let statusHtml = "";
+            if (item.expiryDate) {
+                const expiry = new Date(item.expiryDate);
+                const diffDays = Math.ceil(
+                    (expiry - today) / (1000 * 60 * 60 * 24)
+                );
+                let statusClass = "text-green";
+                let statusText = `${diffDays} hari lagi`;
+                if (diffDays < 0) {
+                    statusClass = "text-red";
+                    statusText = "Sudah expired";
+                } else if (diffDays <= 7) {
+                    statusClass = "text-accent";
+                    statusText = `${diffDays} hari lagi`;
+                }
+                statusHtml = `<div class="${statusClass} fw-600" style="font-size:12px;">${statusText}</div>`;
+            }
+
+            const div = document.createElement("div");
+            div.className = "purchase-log-item";
+            div.innerHTML = `
+            <div class="flex-between">
+                <div>
+                    <div class="fw-600" style="font-size:14px;">${item.name}</div>
+                    <div class="subtext">Beli: ${formatDateID(item.purchaseDate)}</div>
+                </div>
+                <div class="text-right">
+                    ${statusHtml}
+                    <button class="icon-btn-small mt-2" onclick="deletePurchaseItem('${item.id}')"><i data-lucide="trash-2" style="width:14px"></i></button>
+                </div>
+            </div>
+            <div class="mt-2">
+                <label class="subtext" style="display:block;margin-bottom:4px;">Estimasi habis (opsional)</label>
+                <input type="date" class="input-field" style="padding:8px;font-size:13px;" value="${item.expiryDate || ""}" onchange="updateExpiryDate('${item.id}', this.value)">
+            </div>
+        `;
+            list.appendChild(div);
+        });
+
+    if (typeof lucide !== "undefined") lucide.createIcons();
+}
+
+function updateExpiryDate(id, value) {
+    const item = state.purchaseLog.find(p => p.id === id);
+    if (!item) return;
+    item.expiryDate = value || null;
+    saveData();
+    renderPurchaseLog(item.cat);
+}
+
+function deletePurchaseItem(id) {
+    const idx = state.purchaseLog.findIndex(p => p.id === id);
+    if (idx === -1) return;
+    const cat = state.purchaseLog[idx].cat;
+    state.purchaseLog.splice(idx, 1);
+    saveData();
+    renderPurchaseLog(cat);
+}
+
+// --- CELENGAN / PIGGY BANK ---
+function getDaysSince(dateStr) {
+    const start = new Date(dateStr);
+    start.setHours(0, 0, 0, 0);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return Math.floor((now - start) / (1000 * 60 * 60 * 24));
+}
+
+function checkSolanaCycleReset() {
+    const sol = state.piggyBank.solana;
+    if (!sol.cycleStart) {
+        sol.cycleStart = new Date().toISOString().split("T")[0];
+        return;
+    }
+
+    let daysSince = getDaysSince(sol.cycleStart);
+    while (daysSince >= 30) {
+        const startDate = sol.cycleStart;
+        const endDateObj = new Date(startDate);
+        endDateObj.setDate(endDateObj.getDate() + 29);
+        const endDate = endDateObj.toISOString().split("T")[0];
+
+        sol.cycleHistory.unshift({
+            id: generateId(),
+            startDate,
+            endDate,
+            totalDeposited: sol.cycleAmount,
+            totalToppedUp: sol.cycleToppedUp
+        });
+        if (sol.cycleHistory.length > 12)
+            sol.cycleHistory = sol.cycleHistory.slice(0, 12);
+
+        sol.cycleAmount = 0;
+        sol.cycleToppedUp = 0;
+
+        const newStartObj = new Date(startDate);
+        newStartObj.setDate(newStartObj.getDate() + 30);
+        sol.cycleStart = newStartObj.toISOString().split("T")[0];
+
+        daysSince = getDaysSince(sol.cycleStart);
+    }
+}
+
+function depositSolana(amount) {
+    if (!amount || amount <= 0) return;
+    checkSolanaCycleReset();
+    const sol = state.piggyBank.solana;
+    sol.cycleAmount += amount;
+    sol.pendingAmount += amount;
+    sol.depositLog.unshift({ id: generateId(), amount, timestamp: Date.now() });
+    if (sol.depositLog.length > 200)
+        sol.depositLog = sol.depositLog.slice(0, 200);
+}
+
+function depositFashionPiggy(amount) {
+    if (!amount || amount <= 0) return;
+    const f = state.piggyBank.fashion;
+    f.balance += amount;
+    f.depositLog.unshift({
+        id: generateId(),
+        amount,
+        timestamp: Date.now(),
+        type: "deposit"
+    });
+    if (f.depositLog.length > 200) f.depositLog = f.depositLog.slice(0, 200);
+}
+
+function refreshPiggyPlaceholders() {
+    if (!state.piggyBank) return;
+    const solInput = document.getElementById("trxPiggySolana");
+    const fashInput = document.getElementById("trxPiggyFashion");
+    if (solInput)
+        solInput.placeholder = `Min ${formatIDR(state.piggyBank.solana.minDeposit)}`;
+    if (fashInput)
+        fashInput.placeholder = `Min ${formatIDR(state.piggyBank.fashion.minDeposit)}`;
+}
+
+function togglePiggySection() {
+    const sec = document.getElementById("piggyQuickAddSection");
+    const icon = document.getElementById("piggyToggleIcon");
+    sec.classList.toggle("hidden");
+    icon.style.transform = sec.classList.contains("hidden")
+        ? "rotate(0deg)"
+        : "rotate(180deg)";
+}
+
+function renderPiggyCards() {
+    if (!state.piggyBank) return;
+    const sol = state.piggyBank.solana;
+    const fash = state.piggyBank.fashion;
+
+    checkSolanaCycleReset();
+
+    const exchangeEl = document.getElementById("piggySolanaExchange");
+    if (exchangeEl) exchangeEl.textContent = formatIDR(sol.exchangeTotal);
+
+    const pct = Math.min(
+        Math.round((sol.cycleAmount / sol.cycleTarget) * 100),
+        100
+    );
+    const ringEl = document.getElementById("piggySolanaRing");
+    const pctTextEl = document.getElementById("piggySolanaPct");
+    if (ringEl) ringEl.style.setProperty("--pct", pct);
+    if (pctTextEl) pctTextEl.textContent = pct + "%";
+
+    const cycleLabelEl = document.getElementById("piggySolanaCycleLabel");
+    if (cycleLabelEl)
+        cycleLabelEl.textContent = `Siklus: ${formatIDR(sol.cycleAmount)} / ${formatIDR(sol.cycleTarget)}`;
+
+    const fashionBalEl = document.getElementById("piggyFashionBalance");
+    if (fashionBalEl) fashionBalEl.textContent = formatIDR(fash.balance);
+}
+
+// --- SOLANA DETAIL ---
+function openSolanaDetail() {
+    renderSolanaDetail();
+    openModal("solanaDetailModal");
+}
+
+function renderSolanaDetail() {
+    const sol = state.piggyBank.solana;
+    checkSolanaCycleReset();
+
+    document.getElementById("solExchangeBig").textContent = formatIDR(
+        sol.exchangeTotal
+    );
+
+    const pct = Math.min(
+        Math.round((sol.cycleAmount / sol.cycleTarget) * 100),
+        100
+    );
+    document.getElementById("solCycleRing").style.setProperty("--pct", pct);
+    document.getElementById("solCyclePctText").textContent = pct + "%";
+    document.getElementById("solCycleAmountText").textContent =
+        `${formatIDR(sol.cycleAmount)} / ${formatIDR(sol.cycleTarget)}`;
+
+    const daysSince = Math.max(getDaysSince(sol.cycleStart), 0);
+    document.getElementById("solCycleDaysText").textContent =
+        `Hari ke-${daysSince + 1} dari 30`;
+
+    const carriedEl = document.getElementById("solCarriedText");
+    if (sol.cycleToppedUp > 0) {
+        carriedEl.textContent = `Sudah dibawa: ${formatIDR(sol.cycleToppedUp)}`;
+        carriedEl.classList.remove("hidden");
+    } else {
+        carriedEl.classList.add("hidden");
+    }
+
+    document.getElementById("solPendingText").textContent = formatIDR(
+        sol.pendingAmount
+    );
+
+    document.getElementById("solCycleTargetInput").value = sol.cycleTarget;
+    document.getElementById("solMinDepositInput").value = sol.minDeposit;
+    document.getElementById("solCycleStartInput").value = sol.cycleStart;
+
+    renderSolanaHistory();
+}
+
+function saveSolanaSettings() {
+    const sol = state.piggyBank.solana;
+    const target = parseInt(
+        document.getElementById("solCycleTargetInput").value
+    );
+    const minDep = parseInt(
+        document.getElementById("solMinDepositInput").value
+    );
+    const startDate = document.getElementById("solCycleStartInput").value;
+
+    if (target && target > 0) sol.cycleTarget = target;
+    if (minDep && minDep >= 0) sol.minDeposit = minDep;
+    if (startDate) sol.cycleStart = startDate;
+
+    saveData();
+    renderSolanaDetail();
+    showSnackbar("Pengaturan disimpan ✨");
+}
+
+function openSolanaTopupPrompt() {
+    const sol = state.piggyBank.solana;
+    document.getElementById("topupAvailable").textContent = formatIDR(
+        sol.pendingAmount
+    );
+    document.getElementById("topupAmount").value = "";
+    openModal("solanaTopupModal");
+}
+
+function processSolanaTopup() {
+    const sol = state.piggyBank.solana;
+    const amt = parseInt(document.getElementById("topupAmount").value);
+    if (!amt || amt <= 0) return;
+    if (amt > sol.pendingAmount) {
+        showSnackbar("❌ Saldo belum ditop up tidak cukup");
+        return;
+    }
+
+    sol.pendingAmount -= amt;
+    sol.exchangeTotal += amt;
+    sol.cycleToppedUp += amt;
+    sol.topupLog.unshift({
+        id: generateId(),
+        amount: amt,
+        timestamp: Date.now()
+    });
+    if (sol.topupLog.length > 200) sol.topupLog = sol.topupLog.slice(0, 200);
+
+    saveData();
+    closeModal("solanaTopupModal");
+    renderSolanaDetail();
+    showSnackbar(`Top Up berhasil! +${formatIDR(amt)} ke Exchange ✨`);
+}
+
+function renderSolanaHistory() {
+    const sol = state.piggyBank.solana;
+    const list = document.getElementById("solanaHistoryList");
+    if (list) {
+        const combined = [
+            ...sol.depositLog.map(d => ({ ...d, kind: "deposit" })),
+            ...sol.topupLog.map(t => ({ ...t, kind: "topup" }))
+        ]
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 30);
+
+        list.innerHTML = "";
+        if (combined.length === 0) {
+            list.innerHTML = `<p class="subtext text-center">Belum ada riwayat ✨</p>`;
+        } else {
+            combined.forEach(item => {
+                const d = new Date(item.timestamp);
+                const dateStr = formatDateID(d.toISOString().split("T")[0]);
+                const timeStr = d.toTimeString().slice(0, 5);
+                const label =
+                    item.kind === "topup" ? "Top Up ke Exchange" : "Nabung";
+                const colorClass =
+                    item.kind === "topup" ? "text-accent" : "text-green";
+                const sign = item.kind === "topup" ? "→" : "+";
+
+                const div = document.createElement("div");
+                div.className = "purchase-log-item";
+                div.innerHTML = `
+                    <div class="flex-between">
+                        <div>
+                            <div class="fw-600" style="font-size:14px;">${label}</div>
+                            <div class="subtext">${dateStr} • ${timeStr}</div>
+                        </div>
+                        <div class="${colorClass} fw-600">${sign}${formatIDR(item.amount)}</div>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+    }
+
+    const cycleList = document.getElementById("solanaCycleHistoryList");
+    if (cycleList) {
+        cycleList.innerHTML = "";
+        if (sol.cycleHistory.length === 0) {
+            cycleList.innerHTML = `<p class="subtext text-center">Belum ada siklus selesai ✨</p>`;
+        } else {
+            sol.cycleHistory.forEach(c => {
+                const div = document.createElement("div");
+                div.className = "purchase-log-item";
+                div.innerHTML = `
+                    <div class="fw-600" style="font-size:13px;">${formatDateID(c.startDate)} - ${formatDateID(c.endDate)}</div>
+                    <div class="subtext mt-1">Terkumpul: ${formatIDR(c.totalDeposited)} • Ditop up: ${formatIDR(c.totalToppedUp)}</div>
+                `;
+                cycleList.appendChild(div);
+            });
+        }
+    }
+
+    if (typeof lucide !== "undefined") lucide.createIcons();
+}
+
+// --- FASHION PIGGY DETAIL ---
+function openFashionPiggyDetail() {
+    renderFashionPiggyDetail();
+    openModal("fashionPiggyModal");
+}
+
+function renderFashionPiggyDetail() {
+    const f = state.piggyBank.fashion;
+    document.getElementById("fashionPiggyBig").textContent = formatIDR(
+        f.balance
+    );
+    document.getElementById("fashionMinDepositInput").value = f.minDeposit;
+
+    const list = document.getElementById("fashionPiggyHistoryList");
+    if (!list) return;
+    list.innerHTML = "";
+
+    if (f.depositLog.length === 0) {
+        list.innerHTML = `<p class="subtext text-center">Belum ada riwayat ✨</p>`;
+        return;
+    }
+
+    f.depositLog.slice(0, 30).forEach(item => {
+        const d = new Date(item.timestamp);
+        const dateStr = formatDateID(d.toISOString().split("T")[0]);
+        const timeStr = d.toTimeString().slice(0, 5);
+        const isDeposit = item.type === "deposit";
+
+        const div = document.createElement("div");
+        div.className = "purchase-log-item";
+        div.innerHTML = `
+            <div class="flex-between">
+                <div>
+                    <div class="fw-600" style="font-size:14px;">${isDeposit ? "Nabung" : "Pakai Saldo"}</div>
+                    <div class="subtext">${dateStr} • ${timeStr}</div>
+                </div>
+                <div class="${isDeposit ? "text-green" : "text-red"} fw-600">${isDeposit ? "+" : "-"}${formatIDR(item.amount)}</div>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function saveFashionPiggySettings() {
+    const f = state.piggyBank.fashion;
+    const minDep = parseInt(
+        document.getElementById("fashionMinDepositInput").value
+    );
+    if (minDep && minDep >= 0) f.minDeposit = minDep;
+    saveData();
+    showSnackbar("Pengaturan disimpan ✨");
+}
+
+function adjustFashionPiggy(type) {
+    document.getElementById("fashionAdjustType").value = type;
+    document.getElementById("fashionAdjustTitle").textContent =
+        type === "add" ? "Nabung ke Celengan" : "Pakai Saldo Celengan";
+    document.getElementById("fashionAdjustAmount").value = "";
+    openModal("fashionPiggyAdjustModal");
+}
+
+function processFashionPiggyAdjust() {
+    const type = document.getElementById("fashionAdjustType").value;
+    const amt = parseInt(document.getElementById("fashionAdjustAmount").value);
+    if (!amt || amt <= 0) return;
+    const f = state.piggyBank.fashion;
+
+    if (type === "add") {
+        f.balance += amt;
+        f.depositLog.unshift({
+            id: generateId(),
+            amount: amt,
+            timestamp: Date.now(),
+            type: "deposit"
+        });
+    } else {
+        if (amt > f.balance) {
+            showSnackbar("❌ Saldo celengan tidak cukup");
+            return;
+        }
+        f.balance -= amt;
+        f.depositLog.unshift({
+            id: generateId(),
+            amount: amt,
+            timestamp: Date.now(),
+            type: "withdraw"
+        });
+    }
+    if (f.depositLog.length > 200) f.depositLog = f.depositLog.slice(0, 200);
+
+    saveData();
+    closeModal("fashionPiggyAdjustModal");
+    renderFashionPiggyDetail();
+    showSnackbar("Tersimpan ✨");
+}
+
+// --- SNACKBAR (UNDO SYSTEM) ---
+
+let snackbarTimeout;
+function showSnackbar(msg, onUndo) {
+    const sb = document.getElementById("snackbar");
+    document.getElementById("snackbarMsg").textContent = msg;
+    const btn = document.getElementById("snackbarAction");
+
+    if (onUndo) {
+        btn.style.display = "block";
+        btn.onclick = () => {
+            onUndo();
+            sb.classList.remove("show");
+            clearTimeout(snackbarTimeout);
+        };
+    } else {
+        btn.style.display = "none";
+    }
+
+    sb.classList.add("show");
+    clearTimeout(snackbarTimeout);
+    snackbarTimeout = setTimeout(() => {
+        sb.classList.remove("show");
+        tempUndoTransaction = null;
+    }, 5000);
+}
+
+// --- CORE ACTIONS ---
+
+function setTrxType(type) {
+    currentTrxType = type;
+    document.getElementById("btnExpense").classList.remove("active");
+    document.getElementById("btnIncome").classList.remove("active");
+    document
+        .getElementById(type === "expense" ? "btnExpense" : "btnIncome")
+        .classList.add("active");
+}
+
+// --- POS ACTION (tombol di kartu) ---
+function openPosAction(cat, type) {
+    openModal("addTransactionModal");
+    setTrxType(type);
+    document.getElementById("trxModalTitle").textContent =
+        `${type === "income" ? "Pemasukan" : "Pengeluaran"} - ${cat.charAt(0).toUpperCase() + cat.slice(1)}`;
+    document.getElementById("addTransactionModal").dataset.poscat = cat;
+}
+
+function quickAdd(desc, amount) {
+    openModal("addTransactionModal");
+    setTrxType("expense");
+    document.getElementById("trxDesc").value = "";
+    document.getElementById("trxAmount").value = "";
+    document.getElementById("trxModalTitle").textContent = "Catat Transaksi";
+    document.getElementById("addTransactionModal").dataset.poscat = "main";
+    if (!amount) document.getElementById("trxAmount").focus();
+}
+
+function saveTransaction() {
+    const desc = document.getElementById("trxDesc").value;
+    const amount = parseInt(document.getElementById("trxAmount").value);
+    const wallet = document.getElementById("trxWallet").value;
+
+    if (!desc || !amount || amount <= 0) return;
+
+    const poscat =
+        document.getElementById("addTransactionModal").dataset.poscat || "main";
+    const log = {
+        id: generateId(),
+        type: currentTrxType,
+        cat: poscat,
+        wallet: wallet,
+        amount: amount,
+        desc: desc,
+        day: activeDayIndex,
+        timestamp: Date.now()
+    };
+
+    if (currentTrxType === "income") {
+        state.balances[poscat][wallet] += amount;
+    } else {
+        if (poscat === "fashion" || poscat === "skincare") {
+            if (!spendFromPos(poscat, wallet, amount)) return;
+        } else {
+            let currentBalance = state.balances[poscat][wallet];
+            if (amount > currentBalance) {
+                showSnackbar(`❌ Saldo ${poscat} tidak cukup`);
                 return;
             }
+            state.balances[poscat][wallet] -= amount;
+        }
 
-            let totalToSplit = remainingPersonalCheck;
-
-            state.balances.cash = 0;
-            state.balances.ewallet = 0;
-            state.balances.profit = 0;
-
-            let halfShare = totalToSplit / 2;
-            state.balances.fashion += halfShare;
-            state.balances.skincare += halfShare;
-
-            if (state.categoryDebts && state.categoryDebts.length > 0) {
-                state.categoryDebts.forEach(debt => {
-                    if (state.balances[debt.from] >= debt.amount) {
-                        state.balances[debt.from] -= debt.amount;
-                        state.balances[debt.to] += debt.amount;
-                    }
-                });
-                state.categoryDebts = []; 
-                showToast("🔄 Utang antar kategori otomatis diselesaikan dari rekap!");
-            }
-            
-            state.recapHistory.unshift({
-                id: 'RCP-' + Date.now(),
-                date: new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' }),
-                checkMoney: remainingPersonalCheck, 
-                profit, 
-                allocatedEach: halfShare
+        // Auto catat ke Riwayat Pembelian kalau expense di Fashion/Skincare
+        if (poscat === "fashion" || poscat === "skincare") {
+            state.purchaseLog.push({
+                id: generateId(),
+                cat: poscat,
+                name: desc,
+                purchaseDate: new Date().toISOString().split("T")[0],
+                expiryDate: null
             });
-            
-            state.balances.main_baseline = state.balances.modal_jualan + state.balances.fashion + state.balances.skincare;
-            
-            saveState();
-            showToast(`✨ Rekap mingguan bersih! Terbagi rata ke Skincare & Fashion.`);
-        });
-    }
-
-    const btnClear = document.getElementById('btn-clear-storage');
-    if (btnClear) {
-        btnClear.addEventListener('click', () => {
-            localStorage.clear();
-            state = JSON.parse(JSON.stringify(DEFAULT_STATE));
-            localStorage.setItem('solpay_state', JSON.stringify(state));
-            showToast('🗑 Menghapus memori... Mengatur ulang aplikasi!');
-            setTimeout(() => { window.location.reload(true); }, 800);
-        });
-    }
-
-    document.body.addEventListener('click', (e) => {
-        if (e.target.innerText?.includes('Giga Reset Total') || e.target.id === 'btn-reset-system') {
-            const EMPTY_STATE = {
-                balances: { main: 0, main_baseline: 0, modal_jualan: 0, cash: 0, ewallet: 0, profit: 0, piutang: 0, fashion: 0, skincare: 0 },
-                transactions: [], recapHistory: [], categoryDebts: [], weeklyTarget: 50000
-            };
-            state = EMPTY_STATE;
-            saveState();
-            showToast('🧼 GIGA RESET BERHASIL! Seluruh Saldo & History Jadi Nol Mutlak!');
         }
-    });
+    }
+
+    state.history.push(log);
+    updateStreak();
+
+    // Sekalian nabung ke Celengan kalau diisi
+    const piggySolAmt =
+        parseInt(document.getElementById("trxPiggySolana").value) || 0;
+    const piggyFashAmt =
+        parseInt(document.getElementById("trxPiggyFashion").value) || 0;
+    if (piggySolAmt > 0) depositSolana(piggySolAmt);
+    if (piggyFashAmt > 0) depositFashionPiggy(piggyFashAmt);
+
+    saveData();
+    closeModal("addTransactionModal");
+
+    document.getElementById("trxDesc").value = "";
+    document.getElementById("trxAmount").value = "";
+    document.getElementById("trxPiggySolana").value = "";
+    document.getElementById("trxPiggyFashion").value = "";
 }
 
-function handleCategorySpending(category, nominal) {
-    if (!state.categoryDebts) state.categoryDebts = [];
-    const currentPool = state.balances[category];
-    const complementaryCategory = category === 'skincare' ? 'fashion' : 'skincare';
-    
-    if (currentPool >= nominal) {
-        state.balances[category] -= nominal;
+function toggleDebtMode() {
+    isDebtMode = !isDebtMode;
+    const btn = document.getElementById("debtToggleBtn");
+    const subtext = document.getElementById("transferSubtext");
+
+    if (isDebtMode) {
+        btn.textContent = "Batal Hutang";
+        btn.classList.add("text-red");
+        subtext.innerHTML =
+            "<b class='text-red'>Mode Hutang:</b> Sistem akan mencatat ini sebagai pinjaman.";
+        setPillValue("tfFromCat", "fashion");
+        setPillValue("tfToCat", "skincare");
     } else {
-        const structuralDeficit = nominal - currentPool;
-        state.balances[category] = 0;
-        state.balances[complementaryCategory] -= structuralDeficit;
-        
-        state.categoryDebts.push({
-            id: 'CDB-' + Date.now(), 
-            from: category, 
-            to: complementaryCategory, 
-            amount: structuralDeficit, 
-            date: new Date().toLocaleDateString('id-ID')
-        });
-        showToast(`⚠ Saldo ${category} kurang! Meminjam ${formatIDR(structuralDeficit)} dari pos ${complementaryCategory}`);
+        btn.textContent = "Catat Hutang";
+        btn.classList.remove("text-red");
+        subtext.textContent = "Pindah uang antar dompet / tabungan.";
     }
 }
 
-function deleteTransaction(txId) {
-    const index = state.transactions.findIndex(t => t.id === txId);
-    if (index !== -1) {
-        lastDeletedTransaction = { index: index, data: JSON.parse(JSON.stringify(state.transactions[index])) };
-        const tx = state.transactions[index];
-        
-        if (tx.type === 'kuota' || tx.type === 'ewallet' || tx.type === 'tarik') {
-            if (tx.status === 'Lunas') {
-                if (tx.source === 'cash') state.balances.cash -= tx.profit;
-                else state.balances.ewallet -= tx.profit;
-                state.balances.profit -= tx.profit;
-            } else {
-                state.balances.modal_jualan += tx.nominal;
-                state.balances.piutang -= tx.totalPayment;
-            }
+function processTransfer() {
+    const fromCat = document.getElementById("tfFromCat").value;
+    const fromWal = document.getElementById("tfFromWallet").value;
+    const toCat = document.getElementById("tfToCat").value;
+    const toWal = document.getElementById("tfToWallet").value;
+    const amount = parseInt(document.getElementById("tfAmount").value);
+
+    if (!amount || amount <= 0) return;
+    if (fromCat === toCat && fromWal === toWal) return;
+
+    if (amount > state.balances[fromCat][fromWal]) {
+        showSnackbar("❌ Saldo tidak cukup");
+        return;
+    }
+
+    state.balances[fromCat][fromWal] -= amount;
+    state.balances[toCat][toWal] += amount;
+
+    let desc = `Transfer from ${fromCat} to ${toCat}`;
+    if (isDebtMode) {
+        if (fromCat === "fashion" && toCat === "skincare") {
+            state.debt.s_to_f += amount;
+            desc = `Skincare borrowed from Fashion`;
+        } else if (fromCat === "skincare" && toCat === "fashion") {
+            state.debt.f_to_s += amount;
+            desc = `Fashion borrowed from Skincare`;
         }
-        state.transactions.splice(index, 1);
-        saveState();
-        showToast("🗑 Transaksi dihapus!", true);
     }
+
+    state.history.push({
+        id: generateId(),
+        type: "transfer",
+        fromCat,
+        fromWal,
+        toCat,
+        toWal,
+        amount,
+        desc,
+        day: activeDayIndex,
+        timestamp: Date.now(),
+        isDebt: isDebtMode
+    });
+
+    saveData();
+    closeModal("transferModal");
+    document.getElementById("tfAmount").value = "";
+    if (isDebtMode) toggleDebtMode();
 }
 
-function undoDeleteTransaction() {
-    if (lastDeletedTransaction) {
-        const tx = lastDeletedTransaction.data;
-        if (tx.type === 'kuota' || tx.type === 'ewallet' || tx.type === 'tarik') {
-            if (tx.status === 'Lunas') {
-                if (tx.source === 'cash') state.balances.cash += tx.profit;
-                else state.balances.ewallet += tx.profit;
-                state.balances.profit += tx.profit;
-            } else {
-                state.balances.modal_jualan -= tx.nominal;
-                state.balances.piutang += tx.totalPayment;
-            }
-        }
-        state.transactions.splice(lastDeletedTransaction.index, 0, tx);
-        lastDeletedTransaction = null;
-        saveState();
-        showToast("♻ Transaksi dikembalikan!");
-    }
+function setAdjType(type) {
+    currentAdjType = type;
+    document.getElementById("btnAdjAdd").classList.remove("active");
+    document.getElementById("btnAdjReduce").classList.remove("active");
+    document
+        .getElementById(type === "add" ? "btnAdjAdd" : "btnAdjReduce")
+        .classList.add("active");
 }
 
-let activeDebtId = null;
-function triggerMarkAsPaid(id) {
-    activeDebtId = id;
-    const confirmOverlay = document.getElementById('confirmOverlay');
-    if (confirmOverlay) confirmOverlay.classList.add('open');
+function processAdjustment() {
+    const cat = document.getElementById("adjCat").value;
+    const wallet = document.getElementById("adjWallet").value;
+    const amount = parseInt(document.getElementById("adjAmount").value);
+
+    if (!amount || amount <= 0) return;
+
+    if (currentAdjType === "add") state.balances[cat][wallet] += amount;
+    else state.balances[cat][wallet] -= amount;
+
+    state.history.push({
+        id: generateId(),
+        type: currentAdjType === "add" ? "income" : "expense",
+        cat,
+        wallet,
+        amount,
+        desc: "Manual Adjustment",
+        day: activeDayIndex,
+        timestamp: Date.now()
+    });
+
+    updateStreak();
+    saveData();
+    closeModal("addExistingModal");
+    document.getElementById("adjAmount").value = "";
 }
 
-function initConfirmationEvents() {
-    const btnCancel = document.getElementById('btn-confirm-cancel');
-    if (btnCancel) {
-        btnCancel.addEventListener('click', () => {
-            document.getElementById('confirmOverlay').classList.remove('open');
-            activeDebtId = null;
-        });
-    }
+function saveGoal() {
+    const name = document.getElementById("goalName").value;
+    const amount = parseInt(document.getElementById("goalAmount").value);
+    const cat = document.getElementById("goalCategory").value;
 
-    const btnYes = document.getElementById('btn-confirm-yes');
-    if (btnYes) {
-        btnYes.addEventListener('click', () => {
-            if (activeDebtId) {
-                const index = state.transactions.findIndex(t => t.id === activeDebtId);
-                if (index !== -1) {
-                    const tx = state.transactions[index];
-                    const targetWallet = getCustomSelectValue('confirm-receive-group') || 'cash';
-                    
-                    tx.status = 'Lunas';
-                    state.balances.modal_jualan += tx.nominal;
-                    
-                    if (targetWallet === 'cash') state.balances.cash += tx.profit;
-                    else state.balances.ewallet += tx.profit;
-                    
-                    state.balances.profit += tx.profit;
-                    tx.source = targetWallet;
-                    
-                    document.getElementById('confirmOverlay').classList.remove('open');
-                    showToast(`✅ Pembayaran Hutang dari ${tx.customer} Lunas! Modal diamankan, untung masuk ${targetWallet.toUpperCase()}`);
-                    saveState();
-                }
-            }
-        });
-    }
+    if (!name || !amount) return;
+
+    state.goals.push({ name, amount, cat });
+    saveData();
+    closeModal("addGoalModal");
+    document.getElementById("goalName").value = "";
+    document.getElementById("goalAmount").value = "";
+}
+function deleteGoal(idx) {
+    state.goals.splice(idx, 1);
+    saveData();
 }
 
-// ENGINE DYNAMIC RENDERING (🔥 FIXED & REFACTORED)
-function renderAll() {
-    state.balances.main = state.balances.cash + state.balances.ewallet + state.balances.modal_jualan + state.balances.fashion + state.balances.skincare;
-    
-    if(document.getElementById('txt-main-balance')) document.getElementById('txt-main-balance').innerText = formatIDR(state.balances.main);
-    if(document.getElementById('txt-modal-jualan')) document.getElementById('txt-modal-jualan').innerText = formatIDR(state.balances.modal_jualan);
-    if(document.getElementById('txt-cash-balance')) document.getElementById('txt-cash-balance').innerText = formatIDR(state.balances.cash);
-    if(document.getElementById('txt-ewallet-balance')) document.getElementById('txt-ewallet-balance').innerText = formatIDR(state.balances.ewallet);
-    if(document.getElementById('txt-business-profit')) document.getElementById('txt-business-profit').innerText = formatIDR(state.balances.profit);
-    
-    const realPiutang = state.transactions.filter(t => t.status === 'Hutang').reduce((acc, c) => acc + c.totalPayment, 0);
-    state.balances.piutang = realPiutang;
-    if(document.getElementById('txt-total-piutang')) document.getElementById('txt-total-piutang').innerText = formatIDR(state.balances.piutang);
-    
-    if(document.getElementById('txt-fashion-balance')) document.getElementById('txt-fashion-balance').innerText = formatIDR(state.balances.fashion);
-    if(document.getElementById('txt-skincare-balance')) document.getElementById('txt-skincare-balance').innerText = formatIDR(state.balances.skincare);
-    
-    const currentProgressMoney =
-    state.balances.cash +
-    state.balances.ewallet +
-    state.balances.modal_jualan +
-    state.balances.profit;
-    if(document.getElementById('recap-cek-val')) document.getElementById('recap-cek-val').innerText = formatIDR(currentProgressMoney);
-    if(document.getElementById('recap-profit-val')) document.getElementById('recap-profit-val').innerText = formatIDR(state.balances.profit);
-    
-    // 🔥 1. PROGRESS BAR & TARGET TEXT FIX (Menembak ID yang tepat & Anti Error)
-    const targetText = document.getElementById('saving-percent-text');
-    const progressBar = document.getElementById('saving-progress-bar');
-    if (targetText && progressBar && state.weeklyTarget > 0) {
-        const percentage = Math.min(Math.round((currentProgressMoney / state.weeklyTarget) * 100), 100);
-        targetText.innerText = `${percentage}% Tercapai`;
-        progressBar.style.width = `${percentage}%`;
-    }
+// --- BUSINESS LOGIC ---
+function bizProductLabel(type) {
+    const labels = {
+        transfer: "Transfer",
+        data: "Paket Data",
+        pulsa: "Pulsa",
+        pln: "PLN",
+        ewallet: "E-Wallet",
+        game: "Top Up Game"
+    };
+    return labels[type] || type.toUpperCase();
+}
 
-    // 🔥 2. STATUS HUTANG KATEGORI INTERN FIX
-    const internalDebtStatus = document.getElementById('internal-debt-status');
-    if (internalDebtStatus) {
-        if (state.categoryDebts && state.categoryDebts.length > 0) {
-            let debtSummary = state.categoryDebts.map(d => `Pos <b>${d.from.toUpperCase()}</b> pinjam ke <b>${d.to.toUpperCase()}</b> sebesar ${formatIDR(d.amount)}`).join('<br>');
-            internalDebtStatus.innerHTML = `<span style="color:#EAB308;">⚠️ ${debtSummary}</span>`;
+function updateBizProfit() {
+    const type = document.getElementById("bizProduct").value;
+    const status = document.getElementById("bizStatus").value;
+    const cap = parseInt(document.getElementById("bizCapital").value) || 0;
+
+    let p = 0;
+
+    if (type === "data") {
+        p = 3000;
+    } else if (type === "transfer") {
+        p = cap < 100000 ? 3000 : 5000;
+    } else if (type === "pln") {
+        p = 4000;
+    } else if (type === "game") {
+        p = 3000;
+    } else if (type === "pulsa") {
+        p = cap < 50000 ? 3000 : 4000;
+    } else if (type === "ewallet") {
+        if (status === "paid") {
+            if (cap < 50000) p = 3000;
+            else if (cap <= 100000) p = 5000;
+            else p = 7000;
         } else {
-            internalDebtStatus.innerHTML = `Sistem seimbang. Tidak ada hutang kategori.`;
+            // Piutang: dibawah 50k = 3k, diatas 50k = 10%
+            p = cap < 50000 ? 3000 : Math.round(cap * 0.1);
         }
     }
-    
-    renderDebtList();
-    renderRecapHistoryList();
-    renderGlobalHistoryList();
-    renderCharts();
+
+    // Isi field profit dengan angka default, tapi user bisa edit
+    document.getElementById("bizProfitInput").value = p;
 }
 
-function renderDebtList() {
-    const list = document.getElementById('piutang-list');
-    if (!list) return;
-    list.innerHTML = "";
-    
-    const activeDebts = state.transactions.filter(t => t.status === 'Hutang');
-    if (activeDebts.length === 0) {
-        list.innerHTML = `<p style="font-size:12px; color:var(--text-muted); text-align:center; padding:24px;">Tidak ada piutang aktif.</p>`;
+function processBusiness() {
+    const type = document.getElementById("bizProduct").value;
+    const status = document.getElementById("bizStatus").value;
+    const cap = parseInt(document.getElementById("bizCapital").value);
+
+    const fromWal = "dana"; // bisnis selalu modal dari wallet
+    const toWal = document.getElementById("bizToWallet").value;
+
+    if (!cap || cap <= 0) return;
+
+    // ==========================
+    // AUTO BUSINESS LOAN SYSTEM
+    // ==========================
+    if (!ensureBusinessCapital(cap)) return;
+
+    // ==========================
+    // HITUNG PROFIT
+    // ==========================
+
+    const profit =
+        parseInt(document.getElementById("bizProfitInput").value) || 0;
+    if (profit <= 0) {
+        showSnackbar("❌ Profit tidak boleh 0");
         return;
     }
-    activeDebts.forEach(t => {
-        list.innerHTML += `
-            <div class="transaction-card">
-                <div class="tx-details">
-                    <h4>${t.customer}</h4>
-                    <p>${t.type.toUpperCase()} • ${t.date}</p>
-                </div>
-                <div class="tx-action-side">
-                    <span class="tx-amount text-danger">${formatIDR(t.totalPayment)}</span>
-                    <button class="btn-sm-action" onclick="triggerMarkAsPaid('${t.id}')">Tandai Lunas</button>
-                </div>
-            </div>`;
+
+    // lanjut kode lama lu di bawah sini...
+
+    if (status === "paid") {
+        // Modal keluar
+        state.balances.business.dana -= cap;
+        repayBusinessDebt();
+
+        // Customer bayar → modal balik
+        state.balances.business.dana += cap;
+
+        // Profit masuk
+        state.balances.main[toWal] += profit;
+
+        // Auto balikin hutang modal
+        repayBusinessDebt();
+        state.history.push({
+            id: generateId(),
+            type: "business",
+            amount: profit,
+            cat: "main",
+            wallet: toWal,
+            desc: `Biz: ${bizProductLabel(type)} (Paid)`,
+            day: activeDayIndex,
+            isBusinessProfit: true
+        });
+        updateStreak();
+    } else {
+        const custName =
+            document.getElementById("bizCustomer").value.trim() ||
+            "Unknown Customer";
+        state.balances.business.dana -= cap; // Spend capital now. Wait for debt to be fully paid to return it.
+
+        let existingCust = state.receivables.find(
+            r => r.name.toLowerCase() === custName.toLowerCase()
+        );
+        if (existingCust) {
+            existingCust.items.push({
+                desc: bizProductLabel(type),
+                cap: cap,
+                profit: profit
+            });
+            existingCust.totalDebt += cap + profit;
+            existingCust.totalCapital += cap;
+            existingCust.totalProfit += profit;
+            existingCust.status =
+                existingCust.paidAmount > 0 ? "partial" : "pending";
+        } else {
+            state.receivables.push({
+                id: generateId(),
+                name: custName,
+                items: [
+                    { desc: bizProductLabel(type), cap: cap, profit: profit }
+                ],
+                totalDebt: cap + profit,
+                totalCapital: cap,
+                totalProfit: profit,
+                paidAmount: 0,
+                status: "pending",
+                paymentWallets: []
+            });
+        }
+    }
+
+    saveData();
+    closeModal("sideBusinessModal");
+    document.getElementById("bizCapital").value = "";
+    document.getElementById("bizProfitInput").value = "";
+    document.getElementById("bizCustomer").value = "";
+}
+
+function openInstallmentModal(id) {
+    const r = state.receivables.find(x => x.id === id);
+    if (!r) return;
+
+    document.getElementById("instDebtId").value = id;
+    document.getElementById("instCustomerName").textContent =
+        `Customer: ${r.name}`;
+    document.getElementById("instRemaining").textContent = formatIDR(
+        r.totalDebt - r.paidAmount
+    );
+    document.getElementById("instPaid").textContent = formatIDR(r.paidAmount);
+    document.getElementById("instAmount").value = "";
+    document.getElementById("instEditAmount").value = "";
+    setPillValue("instWallet", "cash");
+    setInstMode("new");
+
+    openModal("installmentModal");
+}
+
+function setInstMode(mode) {
+    const isNew = mode === "new";
+    document.getElementById("btnInstNew").classList.toggle("active", isNew);
+    document.getElementById("btnInstEdit").classList.toggle("active", !isNew);
+    document.getElementById("instNewGroup").style.display = isNew
+        ? "block"
+        : "none";
+    document.getElementById("instEditGroup").style.display = isNew
+        ? "none"
+        : "block";
+    document.getElementById("instSubmitBtn").textContent = isNew
+        ? "Simpan Pembayaran"
+        : "Simpan Koreksi";
+}
+
+function processInstallment() {
+    const id = document.getElementById("instDebtId").value;
+    const wallet = document.getElementById("instWallet").value;
+    const isEditMode = document
+        .getElementById("btnInstEdit")
+        .classList.contains("active");
+
+    const rIndex = state.receivables.findIndex(x => x.id === id);
+    if (rIndex === -1) return;
+    const r = state.receivables[rIndex];
+
+    if (isEditMode) {
+        const newPaid = parseInt(
+            document.getElementById("instEditAmount").value
+        );
+        if (isNaN(newPaid) || newPaid < 0) return;
+
+        if (newPaid > r.totalDebt) {
+            showSnackbar(
+                `❌ Tidak bisa melebihi total hutang ${formatIDR(r.totalDebt)}`
+            );
+            return;
+        }
+
+        const diff = newPaid - r.paidAmount;
+
+        if (diff === 0) {
+            showSnackbar("Tidak ada perubahan.");
+            closeModal("installmentModal");
+            return;
+        }
+
+        if (diff < 0) {
+            let toTakeBack = Math.abs(diff);
+            const fromBiz = Math.min(
+                toTakeBack,
+                state.balances.business[wallet]
+            );
+            state.balances.business[wallet] -= fromBiz;
+            toTakeBack -= fromBiz;
+            if (toTakeBack > 0) state.balances.main[wallet] -= toTakeBack;
+            showSnackbar(
+                `✅ Koreksi disimpan. Ditarik balik: ${formatIDR(Math.abs(diff))}`
+            );
+        } else {
+            const TARGET_MODAL = 150000;
+            let remaining = diff;
+            const bizNow = state.balances.business.dana;
+            if (bizNow < TARGET_MODAL) {
+                const fillBiz = Math.min(remaining, TARGET_MODAL - bizNow);
+                state.balances.business[wallet] += fillBiz;
+                remaining -= fillBiz;
+            }
+            if (remaining > 0 && state.businessDebt.fashion > 0) {
+                const repay = Math.min(remaining, state.businessDebt.fashion);
+                state.balances.fashion[wallet] += repay;
+                state.businessDebt.fashion -= repay;
+                remaining -= repay;
+            }
+            if (remaining > 0 && state.businessDebt.skincare > 0) {
+                const repay = Math.min(remaining, state.businessDebt.skincare);
+                state.balances.skincare[wallet] += repay;
+                state.businessDebt.skincare -= repay;
+                remaining -= repay;
+            }
+            if (remaining > 0) state.balances.main[wallet] += remaining;
+            showSnackbar(`✅ Koreksi disimpan. Ditambah: ${formatIDR(diff)}`);
+        }
+
+        r.paidAmount = newPaid;
+        r.status =
+            newPaid >= r.totalDebt
+                ? "paid"
+                : newPaid > 0
+                  ? "partial"
+                  : "pending";
+        if (r.paidAmount >= r.totalDebt) {
+            state.receivables.splice(rIndex, 1);
+            showSnackbar("Debt Fully Paid! ✨");
+        }
+
+        saveData();
+        closeModal("installmentModal");
+        return;
+    }
+
+    const amt = parseInt(document.getElementById("instAmount").value);
+    if (!amt || amt <= 0) return;
+
+    const rem = r.totalDebt - r.paidAmount;
+    const payment = Math.min(amt, rem);
+
+    r.paidAmount += payment;
+    r.paymentWallets.push({ amount: payment, wallet: wallet });
+
+    const TARGET_MODAL = 150000;
+    let remaining = payment;
+
+    const bizNow = state.balances.business.dana;
+    if (bizNow < TARGET_MODAL) {
+        const fillBiz = Math.min(remaining, TARGET_MODAL - bizNow);
+        state.balances.business[wallet] += fillBiz;
+        remaining -= fillBiz;
+    }
+    if (remaining > 0 && state.businessDebt.fashion > 0) {
+        const repay = Math.min(remaining, state.businessDebt.fashion);
+        state.balances.fashion[wallet] += repay;
+        state.businessDebt.fashion -= repay;
+        remaining -= repay;
+    }
+    if (remaining > 0 && state.businessDebt.skincare > 0) {
+        const repay = Math.min(remaining, state.businessDebt.skincare);
+        state.balances.skincare[wallet] += repay;
+        state.businessDebt.skincare -= repay;
+        remaining -= repay;
+    }
+    if (remaining > 0) {
+        state.balances.main[wallet] += remaining;
+        state.history.push({
+            id: generateId(),
+            type: "business",
+            amount: remaining,
+            cat: "main",
+            wallet: wallet,
+            desc: `Cicilan Profit: ${r.name}`,
+            day: activeDayIndex,
+            isBusinessProfit: true
+        });
+        updateStreak();
+    }
+
+    if (r.paidAmount >= r.totalDebt) {
+        state.receivables.splice(rIndex, 1);
+        showSnackbar("Debt Fully Paid! ✨");
+    } else {
+        r.status = "partial";
+        showSnackbar(
+            `Cicilan disimpan 🟠 Sisa: ${formatIDR(r.totalDebt - r.paidAmount)}`
+        );
+    }
+
+    saveData();
+    closeModal("installmentModal");
+}
+
+function deleteLog(id) {
+    const idx = state.history.findIndex(h => h.id === id);
+    if (idx === -1) return;
+
+    const log = state.history[idx];
+    tempUndoTransaction = { index: idx, log: deepCopy(log) };
+
+    if (log.type === "income")
+        state.balances[log.cat][log.wallet] -= log.amount;
+    else if (log.type === "expense")
+        state.balances[log.cat][log.wallet] += log.amount;
+    else if (log.type === "transfer") {
+        state.balances[log.fromCat][log.fromWal] += log.amount;
+        state.balances[log.toCat][log.toWal] -= log.amount;
+        if (log.isDebt) {
+            if (log.fromCat === "fashion" && log.toCat === "skincare")
+                state.debt.s_to_f -= log.amount;
+            if (log.fromCat === "skincare" && log.toCat === "fashion")
+                state.debt.f_to_s -= log.amount;
+        }
+    } else if (log.type === "business" && log.isBusinessProfit) {
+        state.balances.main[log.wallet] -= log.amount;
+    }
+
+    state.history.splice(idx, 1);
+    saveData();
+
+    showSnackbar("Transaction removed", () => {
+        const restored = tempUndoTransaction.log;
+        state.history.splice(tempUndoTransaction.index, 0, restored);
+
+        if (restored.type === "income")
+            state.balances[restored.cat][restored.wallet] += restored.amount;
+        else if (restored.type === "expense")
+            state.balances[restored.cat][restored.wallet] -= restored.amount;
+        else if (restored.type === "transfer") {
+            state.balances[restored.fromCat][restored.fromWal] -=
+                restored.amount;
+            state.balances[restored.toCat][restored.toWal] += restored.amount;
+            if (restored.isDebt) {
+                if (
+                    restored.fromCat === "fashion" &&
+                    restored.toCat === "skincare"
+                )
+                    state.debt.s_to_f += restored.amount;
+                if (
+                    restored.fromCat === "skincare" &&
+                    restored.toCat === "fashion"
+                )
+                    state.debt.f_to_s += restored.amount;
+            }
+        } else if (restored.type === "business" && restored.isBusinessProfit) {
+            state.balances.main[restored.wallet] += restored.amount;
+        }
+
+        saveData();
     });
 }
 
-// Gunakan window. global scope agar fungsi inline onclick HTML dapat memanggilnya
-window.triggerMarkAsPaid = triggerMarkAsPaid;
-window.deleteTransaction = deleteTransaction;
-window.undoDeleteTransaction = undoDeleteTransaction;
-window.openActionModal = openActionModal;
-window.openManualTracker = openManualTracker;
+// --- RECAP SYSTEM ---
+function checkRecapReminder() {
+    const today = new Date().getDay();
+    const weekId = getWeekId();
+    const recapBannerEl = document.getElementById("recapBanner");
 
-function renderRecapHistoryList() {
-    const rcpList = document.getElementById('recap-history-list');
-    if (!rcpList) return;
-    rcpList.innerHTML = "";
-    if (state.recapHistory.length === 0) {
-        rcpList.innerHTML = `<p style="font-size:12px; color:var(--text-muted); text-align:center; padding:12px;">Belum ada riwayat rekap.</p>`;
+    // Pengaman: Hanya jalankan jika elemen recapBanner ada di HTML
+    if (recapBannerEl) {
+        if (today === 0 && state.recapDoneWeekId !== weekId) {
+            recapBannerEl.classList.remove("hidden");
+        } else {
+            recapBannerEl.classList.add("hidden");
+        }
+    }
+}
+
+function hideRecapBanner() {
+    document.getElementById("recapBanner").classList.add("hidden");
+}
+
+let pendingRecapData = null;
+
+function initRecap() {
+    const totalMain = state.balances.main.cash + state.balances.main.dana;
+    if (totalMain <= 0) {
+        showSnackbar("❌ Tidak ada saldo Main untuk di-recap.");
+        return;
+    }
+
+    let splitAmount = totalMain / 2;
+    let fashionGets = splitAmount;
+    let skincareGets = splitAmount;
+    let debtStr = "No debts ✨";
+
+    if (state.debt.s_to_f > 0) {
+        let repay = Math.min(splitAmount, state.debt.s_to_f);
+        fashionGets += repay;
+        skincareGets -= repay;
+        debtStr = `Skincare pays Fashion ${formatIDR(repay)}`;
+    } else if (state.debt.f_to_s > 0) {
+        let repay = Math.min(splitAmount, state.debt.f_to_s);
+        skincareGets += repay;
+        fashionGets -= repay;
+        debtStr = `Fashion pays Skincare ${formatIDR(repay)}`;
+    }
+
+    pendingRecapData = { totalMain, fashionGets, skincareGets };
+
+    document.getElementById("recapCollected").textContent =
+        formatIDR(totalMain);
+    document.getElementById("recapBase").textContent =
+        `${formatIDR(splitAmount)} each`;
+
+    const debtRow = document.getElementById("recapDebtRow");
+    if (debtStr !== "No debts ✨") {
+        debtRow.classList.remove("hidden");
+        document.getElementById("recapDebtText").textContent = debtStr;
+    } else debtRow.classList.add("hidden");
+
+    document.getElementById("recapFinalFashion").textContent =
+        formatIDR(fashionGets);
+    document.getElementById("recapFinalSkincare").textContent =
+        formatIDR(skincareGets);
+
+    openModal("recapPreviewModal");
+}
+
+function confirmRecap() {
+    if (!pendingRecapData) return;
+
+    const cashPool = state.balances.main.cash;
+    const danaPool = state.balances.main.dana;
+
+    let fNeed = pendingRecapData.fashionGets;
+    let sNeed = pendingRecapData.skincareGets;
+
+    let fCash = Math.min(fNeed, cashPool);
+    fNeed -= fCash;
+    let fDana = Math.min(fNeed, danaPool);
+
+    let remCash = cashPool - fCash;
+    let remDana = danaPool - fDana;
+
+    let sCash = Math.min(sNeed, remCash);
+    sNeed -= sCash;
+    let sDana = Math.min(sNeed, remDana);
+
+    state.balances.main.cash = 0;
+    state.balances.main.dana = 0;
+    state.balances.fashion.cash += fCash;
+    state.balances.fashion.dana += fDana;
+    state.balances.skincare.cash += sCash;
+    state.balances.skincare.dana += sDana;
+
+    let splitAmount = pendingRecapData.totalMain / 2;
+    if (state.debt.s_to_f > 0)
+        state.debt.s_to_f -= Math.min(splitAmount, state.debt.s_to_f);
+    if (state.debt.f_to_s > 0)
+        state.debt.f_to_s -= Math.min(splitAmount, state.debt.f_to_s);
+
+    state.recapDoneWeekId = getWeekId();
+
+    saveData();
+    closeModal("recapPreviewModal");
+    hideRecapBanner();
+    showSnackbar("Recap Complete ✨");
+}
+
+function updateStreak() {
+    const todayStr = new Date().toDateString();
+
+    if (state.streak.lastDate !== todayStr) {
+        state.streak.count += 1;
+        state.streak.lastDate = todayStr;
+    }
+
+    checkStreak();
+}
+function checkStreak() {
+    const badge = document.getElementById("streakBadge");
+    // kalau element belum ada, stop
+    if (!badge) return;
+    if (state.streak.count > 0) {
+        badge.textContent = `Consistent ${state.streak.count} Days ✨`;
+        badge.classList.remove("hidden");
+    } else badge.classList.add("hidden");
+}
+
+function processSoftReset() {
+    state.history = [];
+    state.recapDoneWeekId = null;
+    saveData();
+    closeModal("settingsModal");
+    showSnackbar("Tracker & History cleared.");
+}
+
+function processFullReset() {
+    localStorage.removeItem("solpay_data");
+    state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    saveData();
+    closeModal("fullResetModal");
+}
+
+function openWalletAction(cat) {
+    const action = prompt(
+        `${cat.toUpperCase()}\n\nKetik:\n1 = pemasukan\n2 = pengeluaran`
+    );
+
+    if (!action) return;
+
+    const amount = parseInt(prompt("Masukkan nominal:"));
+
+    if (!amount || amount <= 0) return;
+
+    const wallet = prompt("cash atau dana?")?.toLowerCase();
+
+    if (wallet !== "cash" && wallet !== "dana") {
+        showSnackbar("Wallet tidak valid");
+        return;
+    }
+
+    const desc = prompt("Nama transaksi:");
+
+    if (action === "1") {
+        state.balances[cat][wallet] += amount;
+
+        state.history.push({
+            id: generateId(),
+            type: "income",
+            cat,
+            wallet,
+            amount,
+            desc: desc || `${cat} Income`,
+            day: activeDayIndex,
+            timestamp: Date.now()
+        });
     } else {
-        state.recapHistory.forEach(r => {
-            rcpList.innerHTML += `
-                <div class="transaction-card">
-                    <div class="tx-details"><h4>${r.date}</h4><p>Sisa Kas Bersih Terbagi</p></div>
-                    <div class="tx-action-side"><span class="tx-amount text-success">+${formatIDR(r.allocatedEach)}</span></div>
-                </div>`;
+        state.balances[cat][wallet] -= amount;
+
+        state.history.push({
+            id: generateId(),
+            type: "expense",
+            cat,
+            wallet,
+            amount,
+            desc: desc || `${cat} Expense`,
+            day: activeDayIndex,
+            timestamp: Date.now()
         });
     }
+
+    saveData();
 }
 
-function renderGlobalHistoryList() {
-    const list = document.getElementById('global-history-list');
-    if (!list) return;
-    list.innerHTML = "";
-    
-    if (state.transactions.length === 0) {
-        list.innerHTML = `<p style="font-size:12px; color:var(--text-muted); text-align:center; padding:24px;">Belum ada aktivitas transaksi.</p>`;
-        return;
-    }
-    state.transactions.forEach(t => {
-        const isLunas = t.status === 'Lunas';
-        list.innerHTML += `
-            <div class="history-item-card" style="margin-bottom:10px;">
-                <div class="tx-details">
-                    <h4>${t.customer} (${t.type.toUpperCase()})</h4>
-                    <p>${t.date} • <span style="font-size:10px; color:var(--text-muted);">${t.notes || ''}</span></p>
-                    <span class="tag-info" style="background:${isLunas?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)'}; color:${isLunas?'#14F195':'#EF4444'}">${t.status}</span>
-                </div>
-                <div class="tx-action-side">
-                    <span class="tx-amount ${isLunas ? 'text-success' : 'text-danger'}" style="margin-bottom:6px;">${formatIDR(t.totalPayment)}</span>
-                    <button onclick="deleteTransaction('${t.id}')" style="background:none; border:none; color:var(--color-danger); font-size:11px; cursor:pointer; text-decoration:underline;">Hapus</button>
-                </div>
-            </div>`;
+window.onload = loadData;
+
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker
+            .register("./service-worker.js")
+            .then(() => console.log("Service Worker aktif ✨"))
+            .catch(err => console.log("Gagal daftar Service Worker", err));
     });
 }
-
-function renderCharts() {
-    const ctxGrowth = document.getElementById('chartGrowth');
-    const ctxSpending = document.getElementById('chartSpending');
-    if (!ctxGrowth || !ctxSpending || !window.Chart) return;
-
-    if (chartGrowthInstance) chartGrowthInstance.destroy();
-    if (chartSpendingInstance) chartSpendingInstance.destroy();
-
-    chartGrowthInstance = new Chart(ctxGrowth, {
-        type: 'line',
-        data: {
-            labels: ['Base', 'W-1', 'Current'],
-            datasets: [{
-                label: 'Trend Saldo', data: [state.balances.main_baseline, state.balances.main * 0.95, state.balances.main], borderColor: '#14F195', tension: 0.4, borderWidth: 2, fill: false
-            }]
-        },
-        options: { responsive: true }
-    });
-
-    chartSpendingInstance = new Chart(ctxSpending, {
-        type: 'bar',
-        data: {
-            labels: ['Stok', 'Cash', 'E-Wallet', 'Fashion', 'Skincare'],
-            datasets: [{
-                data: [state.balances.modal_jualan, state.balances.cash, state.balances.ewallet, state.balances.fashion, state.balances.skincare],
-                backgroundColor: ['#14F195', '#9945FF', '#00D1FF', '#3B82F6', '#EC4899']
-            }]
-        },
-        options: { responsive: true }
-    });
-}
-
-function formatIDR(amount) {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
-}
-
-// Tambahkan ini di baris paling bawah file JS lu
-document.addEventListener('DOMContentLoaded', () => {
-    renderAll(); 
-    if (window.lucide) lucide.createIcons();
-});
 
